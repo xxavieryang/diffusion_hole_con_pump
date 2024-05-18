@@ -2,6 +2,7 @@ from mpi4py import MPI
 import numpy as np
 from dolfinx import mesh
 import gmsh
+from dolfinx.io import gmshio
 from dolfinx.fem import functionspace
 
 
@@ -22,12 +23,15 @@ model_rank = 0
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)
 	cell = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
+#	cell1 = gmsh.model.occ.addDisk(c_x+4, c_y+3, 0, r, r)
 
 #cut out for point source model
 
 if  mesh_comm.rank == model_rank:
-	point_source_liquid = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell)])
+	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell)])
+#	point_source_domain2 = gmsh.model.occ.cut([(gdim,point_source_domain)],[(gdim,cell1)])
 	gmsh.model.occ.synchronize()
+
 
 liquid_marker = 1
 if mesh_comm.rank == model_rank:
@@ -45,7 +49,8 @@ if mesh_comm.rank == model_rank:
 	boundaries = gmsh.model.getBoundary(volumes, oriented = False)
 	for boundary in boundaries:
 		center_of_mass = gmsh.model.occ.getCenterOfMass(boundary[0],boundary[1])
-		if np.allclose(center_of_mass,[L/2,0,0]) or np.allclose(center_of_mass,[0,W/2,0]) or np.allclose(center_of_mass,[L,W/2,0]) or np.allclose(center_of_mass,[L/2,W,0]):
+		if np.allclose(center_of_mass,[L/2,0,0]) or np.allclose(center_of_mass,[0,W/2,0]) or \
+		np.allclose(center_of_mass,[L,W/2,0]) or np.allclose(center_of_mass,[L/2,W,0]):
 			wall.append(boundary[1])
 		else:
 			cell.append(boundary[1])
@@ -69,10 +74,23 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.field.setAsBackgroundMesh(min_field)
 
 if mesh_comm.rank == model_rank:
-	gmsh.option.setNumber("Mesh.Algorithm", 8)
-	gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 2)
-	gmsh.option.setNumber("Mesh.RecombineAll", 1)
-	gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
 	gmsh.model.mesh.generate(gdim)
 	gmsh.model.mesh.setOrder(2)
 	gmsh.model.mesh.optimize("Netgen")
+
+domain, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim=gdim)
+V = functionspace(domain, ("Lagrange", 1))
+
+import pyvista
+print(pyvista.global_theme.jupyter_backend)
+
+from dolfinx import plot
+topology, cell_types, geometry = plot.vtk_mesh(V)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, show_edges=True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("fundamentals_mesh.png")
