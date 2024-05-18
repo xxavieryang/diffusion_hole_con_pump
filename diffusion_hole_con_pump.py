@@ -18,18 +18,20 @@ gdim = 2
 mesh_comm = MPI.COMM_WORLD
 model_rank = 0
 
-#Define the Petri dish and the cell
+#Define the Petri dish and the cells
 
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)
-	cell = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
-#	cell1 = gmsh.model.occ.addDisk(c_x+4, c_y+3, 0, r, r)
+	cell1 = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
+	cell2 = gmsh.model.occ.addDisk(c_x+2, c_y+3, 0, r, r)
+	cell3 = gmsh.model.occ.addDisk(c_x+6, c_y+6, 0, r, r)
 
 #cut out for point source model
 
 if  mesh_comm.rank == model_rank:
-	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell)])
-#	point_source_domain2 = gmsh.model.occ.cut([(gdim,point_source_domain)],[(gdim,cell1)])
+	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
+	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
 
@@ -43,7 +45,7 @@ if mesh_comm.rank == model_rank:
 
 wall_marker, cell_marker = 2, 3
 
-wall, cell = [], []
+wall, cell1 = [], []
 
 if mesh_comm.rank == model_rank:
 	boundaries = gmsh.model.getBoundary(volumes, oriented = False)
@@ -53,16 +55,16 @@ if mesh_comm.rank == model_rank:
 		np.allclose(center_of_mass,[L,W/2,0]) or np.allclose(center_of_mass,[L/2,W,0]):
 			wall.append(boundary[1])
 		else:
-			cell.append(boundary[1])
+			cell1.append(boundary[1])
 	gmsh.model.addPhysicalGroup(1,wall,wall_marker)
 	gmsh.model.setPhysicalName(1,wall_marker,"Wall")
-	gmsh.model.addPhysicalGroup(1,cell,cell_marker)
+	gmsh.model.addPhysicalGroup(1,cell1,cell_marker)
 	gmsh.model.setPhysicalName(1,cell_marker,"Cell")
 
 res_min = r / 3
 if mesh_comm.rank == model_rank:
 	distance_field = gmsh.model.mesh.field.add("Distance")
-	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cell)
+	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cell1)
 	threshold_field = gmsh.model.mesh.field.add("Threshold")
 	gmsh.model.mesh.field.setNumber(threshold_field, "IField", distance_field)
 	gmsh.model.mesh.field.setNumber(threshold_field, "LcMin", res_min)
