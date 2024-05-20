@@ -11,27 +11,27 @@ from dolfinx.fem import functionspace
 gmsh.initialize()
 
 L = W = 10
-r = 0.5
+r = 0.2
 c_x = 2.2
 c_y = 2.6
 gdim = 2
 mesh_comm = MPI.COMM_WORLD
 model_rank = 0
 
-#Define the Petri dish and the cells
+#define the Petri dish and the cells
 
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)
 	cell1 = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
-	cell2 = gmsh.model.occ.addDisk(c_x+2, c_y+3, 0, r, r)
-	cell3 = gmsh.model.occ.addDisk(c_x+6, c_y+6, 0, r, r)
+	#cell2 = gmsh.model.occ.addDisk(c_x+2, c_y+3, 0, r, r)
+	#cell3 = gmsh.model.occ.addDisk(c_x+6, c_y+6, 0, r, r)
 
 #cut out for point source model
 
 if  mesh_comm.rank == model_rank:
 	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
-	point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
+	#point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	#point_source_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
 
@@ -80,19 +80,22 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.setOrder(2)
 	gmsh.model.mesh.optimize("Netgen")
 
-domain, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim=gdim)
+domain, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V = functionspace(domain, ("Lagrange", 1))
 
 import pyvista
 print(pyvista.global_theme.jupyter_backend)
 
 from dolfinx import plot
+
 topology, cell_types, geometry = plot.vtk_mesh(V)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
-plotter.add_mesh(grid, show_edges=True)
+plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
 else:
     figure = plotter.screenshot("fundamentals_mesh.png")
+
+#Point source model
