@@ -83,6 +83,7 @@ if mesh_comm.rank == model_rank:
 domain, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V = functionspace(domain, ("Lagrange", 1))
 
+#Show mesh
 import pyvista
 print(pyvista.global_theme.jupyter_backend)
 
@@ -98,4 +99,12 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = plotter.screenshot("fundamentals_mesh.png")
 
-#Point source model
+
+#Spatial exclusion model
+u = TrialFunction(V)
+v = TestFunction(V)
+u_ = Function(V)
+u_.name = "u"
+u_s = Function(V)
+u_n = Function(V)
+u_n1 = Function(V)
