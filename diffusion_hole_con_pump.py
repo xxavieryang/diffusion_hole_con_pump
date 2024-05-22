@@ -99,25 +99,25 @@ grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
 plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
-if not pyvista.OFF_SCREEN:
-    plotter.show()
-else:
-    figure = plotter.screenshot("fundamentals_mesh.png")
+#if not pyvista.OFF_SCREEN:
+#    plotter.show()
+#else:
+#    figure = plotter.screenshot("fundamentals_mesh.png")
 
 #Constants
-D = 1
+D = 0.1
 a = 1
 b = 1
 
 t = 0  # Start time
-T = 1.0  # Final time
-num_steps = 50
+T = 10.0  # Final time
+num_steps = 500
 dt = T / num_steps  # time step size
 
 
 #Initial condition
-def initial_condition(x, a=5):
-    return np.exp(-a * (x[0]**2 + x[1]**2))
+def initial_condition(x, disp=0.5,cct=1):
+    return np.exp(-disp * ((x[0]-3)**2+(x[1]-3)**2)+cct)
 
 
 fdim = domain.topology.dim - 1
