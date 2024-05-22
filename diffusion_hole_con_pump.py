@@ -1,9 +1,14 @@
 from mpi4py import MPI
 import numpy as np
 from dolfinx import mesh
+import matplotlib as mpl
 import gmsh
+from dolfinx import fem, mesh, io, plot
 from dolfinx.io import gmshio
-from dolfinx.fem import functionspace
+from dolfinx.fem import functionspace, form, Function
+from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
+                 as_vector, div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
+
 
 
 # Create the computation domain and geometric constant
@@ -77,7 +82,7 @@ if mesh_comm.rank == model_rank:
 
 if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.generate(gdim)
-	gmsh.model.mesh.setOrder(2)
+	gmsh.model.mesh.setOrder(1)
 	gmsh.model.mesh.optimize("Netgen")
 
 domain, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
@@ -99,12 +104,92 @@ if not pyvista.OFF_SCREEN:
 else:
     figure = plotter.screenshot("fundamentals_mesh.png")
 
+#Constants
+D = 1
+a = 1
+b = 1
+
+t = 0  # Start time
+T = 1.0  # Final time
+num_steps = 50
+dt = T / num_steps  # time step size
+
+
+#Initial condition
+def initial_condition(x, a=5):
+    return np.exp(-a * (x[0]**2 + x[1]**2))
+
+
+fdim = domain.topology.dim - 1
+boundary_facets = mesh.locate_entities_boundary(
+    domain, fdim, lambda x: np.full(x.shape[1], True, dtype=bool))
+#bc = fem.dirichletbc(PETSc.ScalarType(0), fem.locate_dofs_topological(V, fdim, boundary_facets), V)
+
+
 
 #Spatial exclusion model
-u = TrialFunction(V)
-v = TestFunction(V)
-u_ = Function(V)
-u_.name = "u"
+u_s = TrialFunction(V)
+v_s = TestFunction(V)
+u_sn = Function(V)
+u_sn.interpolate(initial_condition)
+
+
+a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(3)
+L_s = u_sn * v_s * dx + b * v_s * ds(3)
+
+from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
+from petsc4py import PETSc
+
+
+bilinearform_s = form(a_s)
+linearform_s = form(L_s)
+
+A_s = assemble_matrix(bilinearform_s)
+A_s.assemble()
+b_s = create_vector(linearform_s)
+
+solver = PETSc.KSP().create(domain.comm)
+solver.setOperators(A_s)
+solver.setType(PETSc.KSP.Type.PREONLY)
+solver.getPC().setType(PETSc.PC.Type.LU)
+
 u_s = Function(V)
-u_n = Function(V)
-u_n1 = Function(V)
+
+grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V))
+
+plotter = pyvista.Plotter()
+plotter.open_gif("u_time.gif", fps=10)
+
+grid.point_data["u_s"] = u_s.x.array
+warped = grid.warp_by_scalar("u_s", factor=1)
+
+viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
+sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
+             position_x=0.1, position_y=0.8, width=0.8, height=0.1)
+
+renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+                            cmap=viridis, scalar_bar_args=sargs,
+                            clim=[0, max(u_s.x.array)])
+
+xdmf = io.XDMFFile(domain.comm, "diffusion.xdmf", "w")
+xdmf.write_mesh(domain)
+
+for i in range(num_steps):
+	t += dt
+	with b_s.localForm() as loc_b:
+		loc_b.set(0)
+	assemble_vector(b_s, linearform_s)
+	#
+    # Solve linear problem
+	solver.solve(b_s, u_s.vector)
+	u_s.x.scatter_forward()
+
+	u_sn.x.array[:] = u_s.x.array
+	xdmf.write_function(u_s, t)
+
+	new_warped = grid.warp_by_scalar("u_s", factor=1)
+	warped.points[:, :] = new_warped.points
+	warped.point_data["u_s"][:] = u_s.x.array
+	plotter.write_frame()
+plotter.close()
+xdmf.close()
