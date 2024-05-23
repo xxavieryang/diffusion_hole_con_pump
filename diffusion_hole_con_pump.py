@@ -23,7 +23,7 @@ model_rank = 0
 
 
 #Physical Constants
-D = 1
+D = 0.5
 a = 1
 b = 1
 t = 0  # Start time
@@ -36,14 +36,14 @@ dt = T / num_steps  # Time step size
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)
 	cell1 = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
-	#cell2 = gmsh.model.occ.addDisk(c_x+2, c_y+3, 0, r, r)
-	#cell3 = gmsh.model.occ.addDisk(c_x+6, c_y+6, 0, r, r)
+	cell2 = gmsh.model.occ.addDisk(c_x-2, c_y-3, 0, r, r)
+	#cell3 = gmsh.model.occ.addDisk(c_x-6, c_y-6, 0, r, r)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
 	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
@@ -98,24 +98,24 @@ V = functionspace(domain, ("Lagrange", 1))
 
 
 #Show mesh
-#print(pyvista.global_theme.jupyter_backend)
+print(pyvista.global_theme.jupyter_backend)
 
-#from dolfinx import plot
+from dolfinx import plot
 
-#topology, cell_types, geometry = plot.vtk_mesh(V)
-#grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-#plotter = pyvista.Plotter()
-#plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
-#plotter.view_xy()
-#if not pyvista.OFF_SCREEN:
-#    plotter.show()
-#else:
-#    figure = plotter.screenshot("fundamentals_mesh.png")
+topology, cell_types, geometry = plot.vtk_mesh(V)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("fundamentals_mesh.png")
 
 
 #Initial condition
 def initial_condition(x, disp=1,cct=2):
-    return 0*x[0]#np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
+    return np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
 
 
 #Boundary markers
@@ -128,7 +128,8 @@ boundary_locator = [(1, lambda x: np.isclose(x[0], 0)),
               (2, lambda x: np.isclose(x[0], L)),
               (3, lambda x: np.isclose(x[1], 0)),
               (4, lambda x: np.isclose(x[1], W)),
-              (5, lambda x: np.isclose((x[0]-c_x)**2+(x[1]-c_y)**2,r**2))]
+              (5, lambda x: np.isclose((x[0]-c_x)**2+(x[1]-c_y)**2,r**2)),
+              (6, lambda x: np.isclose((x[0]-c_x+2)**2+(x[1]-c_y+3)**2,r**2))]
 
 facet_indices, facet_markers = [], []
 for (marker, locator) in boundary_locator:
@@ -149,8 +150,8 @@ v_s = TestFunction(V)
 u_sn = Function(V)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(5)
-L_s = u_sn * v_s * dx + dt * b * v_s * ds(5)
+a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(5) + dt * a * u_s * v_s * ds(6)
+L_s = u_sn * v_s * dx + dt * b * v_s * ds(5) + dt * b * v_s * ds(6)
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
