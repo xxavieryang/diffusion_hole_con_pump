@@ -115,7 +115,7 @@ V = functionspace(domain, ("Lagrange", 1))
 
 #Initial condition
 def initial_condition(x, disp=1,cct=2):
-    return np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
+    return 0*x[0]#np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
 
 
 #Boundary markers
