@@ -10,7 +10,6 @@ from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
 import pyvista
 
 
-
 #Create the computation domain and geometric constant
 gmsh.initialize()
 
@@ -25,7 +24,7 @@ model_rank = 0
 
 #Physical Constants
 D = 1
-a = 10
+a = 1
 b = 1
 t = 0  # Start time
 T = 10.0  # Final time
@@ -42,11 +41,11 @@ if mesh_comm.rank == model_rank:
 
 
 #Cut out for spatial exclusion model
-if  mesh_comm.rank == model_rank:
-	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
+#if  mesh_comm.rank == model_rank:
+#	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
 	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
-	gmsh.model.occ.synchronize()
+#	gmsh.model.occ.synchronize()
 
 #Spatial exclusion mesh with more refined meshing around the cells
 liquid_marker = 1
@@ -115,8 +114,8 @@ V = functionspace(domain, ("Lagrange", 1))
 
 
 #Initial condition
-def initial_condition(x, disp=0.5,cct=1):
-    return np.exp(-disp * ((x[0]-3)**2+(x[1]-3)**2)+cct)
+def initial_condition(x, disp=1,cct=2):
+    return np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
 
 
 #Boundary markers
@@ -151,7 +150,7 @@ u_sn = Function(V)
 u_sn.interpolate(initial_condition)
 
 a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(5)
-L_s = u_sn * v_s * dx + b * v_s * ds(5)
+L_s = u_sn * v_s * dx + dt * b * v_s * ds(5)
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
@@ -182,7 +181,7 @@ viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
 
-renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
                             clim=[0, max(u_s.x.array)])
 
@@ -207,6 +206,3 @@ for i in range(num_steps):
 	plotter.write_frame()
 plotter.close()
 xdmf.close()
-
-
-#Point source mesh 
