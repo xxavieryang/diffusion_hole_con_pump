@@ -14,9 +14,12 @@ import pyvista
 gmsh.initialize()
 
 L = W = 10
-r = 0.2
-c_x = 7.8
-c_y = 7.4
+r1 = 0.2
+c1_x = 7.8
+c1_y = 7.4
+r2 = 0.2
+c2_x = 4.5
+c2_y = 4.7
 gdim = 2
 mesh_comm = MPI.COMM_WORLD
 model_rank = 0
@@ -35,9 +38,9 @@ dt = T / num_steps  # Time step size
 #Define the Petri dish and the cells
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
-	cell1 = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
-	cell2 = gmsh.model.occ.addDisk(c_x-2, c_y-3, 0, r, r)
-	#cell3 = gmsh.model.occ.addDisk(c_x-6, c_y-6, 0, r, r)
+	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
+	cell2 = gmsh.model.occ.addDisk(c2_x-2, c2_y-3, 0, r2, r2)
+	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
@@ -126,9 +129,9 @@ if mesh_comm.rank == model_rank:
 
 #Add the hole back
 if  mesh_comm.rank == model_rank:
-	cell1b = gmsh.model.occ.addDisk(c_x, c_y, 0, r, r)
-	cell2b = gmsh.model.occ.addDisk(c_x-2, c_y-3, 0, r, r)
-	#cell3b = gmsh.model.occ.addDisk(c_x-6, c_y-6, 0, r, r)
+	cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
+	cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	#cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
 	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
 	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
@@ -178,8 +181,8 @@ boundary_locator = [(1, lambda x: np.isclose(x[0], 0)),
               (2, lambda x: np.isclose(x[0], L)),
               (3, lambda x: np.isclose(x[1], 0)),
               (4, lambda x: np.isclose(x[1], W)),
-              (5, lambda x: np.isclose((x[0]-c_x)**2+(x[1]-c_y)**2,r**2)),
-              (6, lambda x: np.isclose((x[0]-c_x+2)**2+(x[1]-c_y+3)**2,r**2))]
+              (5, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
+              (6, lambda x: np.isclose((x[0]-c1_x+2)**2+(x[1]-c2_y+3)**2,r2**2))]
 
 facet_indices, facet_markers = [], []
 for (marker, locator) in boundary_locator:
@@ -270,21 +273,21 @@ v_p = TestFunction(V_p)
 u_pn = Function(V_p)
 u_pn.interpolate(initial_condition)
 
-def entire_dish(x)
-	
-	return
+def entire_dish_domain(x):
+	mask = np.full(x.shape[0], True, dtype=bool)
+	return mask
 
-def cell1_domain(x)
-	
-	return
+def cell1_subdomain(x):
+	mask = (x[0]-c1_x)**2 + (x[0]-c1_y)**2 <= r1**2 
+	return mask
 
-def cell2_domain(x)
-	
-	return
+def cell2_subdomain(x):
+	mask = (x[0]-c2_x)**2 + (x[0]-c2_y)**2 <= r2**2 
+	return mask
 
-subdomain_locator = [(1, entire_dish),
-		(2, cell1_domain),
-              (3, cell2_domain)]
+subdomain_locator = [(1, entire_dish_domain),
+		(2, cell1_subdomain),
+              (3, cell2_subdomain)]
 
 
 facet_indices, facet_markers = [], []
