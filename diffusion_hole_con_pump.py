@@ -270,14 +270,22 @@ v_p = TestFunction(V_p)
 u_pn = Function(V_p)
 u_pn.interpolate(initial_condition)
 
+def entire_dish(x)
+	
+	return
 
-subdomain_locator
+def cell1_domain(x)
+	
+	return
 
-subdomain_locator = [(1, lambda x: (x[0]-c_x)**2+(x[1]-c_y)**2<=r**2  (x[0]-c_x)**2+(x[1]-c_y)**2<=r**2),
-              (2, lambda x: (x[0]-c_x+2)**2+(x[1]-c_y+3)**2<=r**2),
-              (3, lambda x: x[0]>=9)]
+def cell2_domain(x)
+	
+	return
 
-print("2")
+subdomain_locator = [(1, entire_dish),
+		(2, cell1_domain),
+              (3, cell2_domain)]
+
 
 facet_indices, facet_markers = [], []
 for (marker, locator) in subdomain_locator:
@@ -287,6 +295,6 @@ for (marker, locator) in subdomain_locator:
 facet_indices = np.hstack(facet_indices).astype(np.int32)
 facet_markers = np.hstack(facet_markers).astype(np.int32)
 sorted_facets = np.argsort(facet_indices)
-facet_tag = mesh.meshtags(domain_spatial_exclusion, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
+facet_tag = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
 dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag)
