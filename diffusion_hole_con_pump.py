@@ -182,7 +182,7 @@ viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
 
-renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
                             clim=[0, max(u_s.x.array)])
 

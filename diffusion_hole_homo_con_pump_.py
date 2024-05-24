@@ -41,8 +41,8 @@ if mesh_comm.rank == model_rank:
 
 
 #Cut out for spatial exclusion model
-#if  mesh_comm.rank == model_rank:
-#	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
+if  mesh_comm.rank == model_rank:
+	spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
 	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#spatial_exclusion_domain = gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 #	gmsh.model.occ.synchronize()
