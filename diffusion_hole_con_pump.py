@@ -18,8 +18,8 @@ r1 = 0.2
 c1_x = 7.8
 c1_y = 7.4
 r2 = 0.2
-c2_x = 4.5
-c2_y = 4.7
+c2_x = 6.2
+c2_y = 6.7
 gdim = 2
 mesh_comm = MPI.COMM_WORLD
 model_rank = 0
@@ -39,7 +39,7 @@ dt = T / num_steps  # Time step size
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
 	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	cell2 = gmsh.model.occ.addDisk(c2_x-2, c2_y-3, 0, r2, r2)
+	cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
@@ -79,7 +79,7 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.addPhysicalGroup(1,cells,cells_marker)
 	gmsh.model.setPhysicalName(1,cells_marker,"Cell")
 
-res_min = r / 3
+res_min = r1 / 3
 if mesh_comm.rank == model_rank:
 	distance_field = gmsh.model.mesh.field.add("Distance")
 	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cells)
@@ -87,7 +87,7 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.field.setNumber(threshold_field, "IField", distance_field)
 	gmsh.model.mesh.field.setNumber(threshold_field, "LcMin", res_min)
 	gmsh.model.mesh.field.setNumber(threshold_field, "LcMax", 0.25 * L)
-	gmsh.model.mesh.field.setNumber(threshold_field, "DistMin", r)
+	gmsh.model.mesh.field.setNumber(threshold_field, "DistMin", r1)
 	gmsh.model.mesh.field.setNumber(threshold_field, "DistMax", 2 * L)
 	min_field = gmsh.model.mesh.field.add("Min")
 	gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", [threshold_field])
@@ -114,6 +114,7 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
+    figure = plotter.screenshot("spatial_exclusion_mesh.png")
 else:
     figure = plotter.screenshot("fundamentals_mesh.png")
 
@@ -161,28 +162,25 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
+    plotter.screenshot("point_source_mesh.png")
 else:
-    figure = plotter.screenshot("fundamentals_mesh.png")
+    figure = plotter.screenshot("point_source_mesh.png")
 
 
 #Initial condition
-def initial_condition(x, disp=1,cct=2):
-    return np.exp(-disp*((x[0]-7)**2+(x[1]-7)**2)+cct)
+def initial_condition(x, disp=1, cct=0.5):
+    return np.sin(disp*x[0]) * cct + cct
 
 
-"""
 #Boundary markers
 fdim = domain_spatial_exclusion.topology.dim - 1
 #boundary_facets = mesh.locate_entities_boundary(
 #    domain_spatial_exclusion, fdim, lambda x: np.full(x.shape[1], True, dtype=bool))
 #bc = fem.dirichletbc(PETSc.ScalarType(0), fem.locate_dofs_topological(V, fdim, boundary_facets), V)
 
-boundary_locator = [(1, lambda x: np.isclose(x[0], 0)),
-              (2, lambda x: np.isclose(x[0], L)),
-              (3, lambda x: np.isclose(x[1], 0)),
-              (4, lambda x: np.isclose(x[1], W)),
-              (5, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
-              (6, lambda x: np.isclose((x[0]-c1_x+2)**2+(x[1]-c2_y+3)**2,r2**2))]
+boundary_locator = [(1, lambda x: np.isclose(x[0], 0) | np.isclose(x[0], L) | np.isclose(x[1], 0) | np.isclose(x[1], W)),
+              (2, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
+              (3, lambda x: np.isclose((x[0]-c2_x)**2+(x[1]-c2_y)**2,r2**2))]
 
 facet_indices, facet_markers = [], []
 for (marker, locator) in boundary_locator:
@@ -203,8 +201,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(5) + dt * a * u_s * v_s * ds(6)
-L_s = u_sn * v_s * dx + dt * b * v_s * ds(5) + dt * b * v_s * ds(6)
+a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(2) + dt * a * u_s * v_s * ds(3)
+L_s = u_sn * v_s * dx + dt * b * v_s * ds(2) + dt * b * v_s * ds(3)
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
@@ -260,6 +258,7 @@ for i in range(num_steps):
 	plotter.write_frame()
 plotter.close()
 xdmf.close()
+
 """
 
 #Point source computation
@@ -301,3 +300,4 @@ sorted_facets = np.argsort(facet_indices)
 facet_tag = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
 dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag)
+"""
