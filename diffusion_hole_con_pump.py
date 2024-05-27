@@ -1,6 +1,7 @@
 from mpi4py import MPI
 import numpy as np
 import matplotlib as mpl
+import os
 import gmsh
 from dolfinx import fem, mesh, io, plot
 from dolfinx.io import gmshio
@@ -114,9 +115,9 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
-    figure = plotter.screenshot("spatial_exclusion_mesh.png")
+    #figure = plotter.screenshot("spatial_exclusion_mesh.png")
 else:
-    figure = plotter.screenshot("fundamentals_mesh.png")
+    figure = plotter.screenshot("patial_exclusion_mesh.png")
 
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=2)
@@ -162,7 +163,7 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
-    plotter.screenshot("point_source_mesh.png")
+    #plotter.screenshot("point_source_mesh.png")
 else:
     figure = plotter.screenshot("point_source_mesh.png")
 
@@ -224,7 +225,7 @@ u_s = Function(V_s)
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 
 plotter = pyvista.Plotter()
-plotter.open_gif("spatial_exclusion.gif", fps=10)
+plotter.open_gif("spactial_exclusion_try.gif", fps=10)
 
 grid.point_data["u_s"] = u_s.x.array
 warped = grid.warp_by_scalar("u_s", factor=1)
@@ -237,8 +238,8 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
                             clim=[0, max(u_s.x.array)])
 
-xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
-xdmf.write_mesh(domain_spatial_exclusion)
+#xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
+#xdmf.write_mesh(domain_spatial_exclusion)
 
 for i in range(num_steps):
 	t += dt
@@ -250,14 +251,15 @@ for i in range(num_steps):
 	u_s.x.scatter_forward()
 
 	u_sn.x.array[:] = u_s.x.array
-	xdmf.write_function(u_s, t)
+	#xdmf.write_function(u_s, t)
 
 	new_warped = grid.warp_by_scalar("u_s", factor=1)
 	warped.points[:, :] = new_warped.points
 	warped.point_data["u_s"][:] = u_s.x.array
 	plotter.write_frame()
-plotter.close()
-xdmf.close()
+os.remove("spactial_exclusion_try.gif")
+#plotter.close()
+#xdmf.close()
 
 """
 
