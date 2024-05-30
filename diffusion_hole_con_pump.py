@@ -351,11 +351,6 @@ Q1_p = assemble_matrix(form(q1_p))
 mat(T1_p).matMult(mat(Q1_p))
 
 
-A1_p = 
-A1_p.assemble()
-print(A1_p.getSize())
-
-
 solver = PETSc.KSP().create(domain_spatial_exclusion.comm)
 solver.setOperators(A_p)
 solver.setType(PETSc.KSP.Type.PREONLY)
