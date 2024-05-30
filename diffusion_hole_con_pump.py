@@ -346,7 +346,7 @@ T1_p = assemble_matrix(form(t1_p))
 Q1_p = assemble_matrix(form(q1_p))
 T1_p.assemble()
 Q1_p.assemble()
-A1_p = T1_p.matMult(Q1_p)
+A1_p = T1_p.matMult(Q1_p) #creatTranspose(Q1_p)? Or creatTranspose(T1_p)?
 A_p.axpy(1.0, A1_p)
 
 
