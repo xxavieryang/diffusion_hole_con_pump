@@ -175,7 +175,7 @@ V_p = functionspace(domain_point_source, ("Lagrange", 1))
 def initial_condition(x, disp=1, cct=0.5):
     return x[0] * 0 + 10
 
-
+"""
 #Spatial exclusion model
 
 #Boundary markers
@@ -425,4 +425,3 @@ for i in range(num_steps):
 plotter.close()
 #xdmf.close()
 
-"""
