@@ -9,7 +9,7 @@ from dolfinx.fem import functionspace, form, Function
 from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
                  as_vector, div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
 import pyvista
-#import point_source
+import point_source as ps
 
 
 #Create the computation domain and geometric constant
@@ -17,8 +17,8 @@ gmsh.initialize()
 
 L = W = 10
 r1 = 0.2
-c1_x = 7.8
-c1_y = 7.4
+c1_x = 5
+c1_y = 5
 r2 = 0.2
 c2_x = 6.2
 c2_y = 6.7
@@ -42,14 +42,14 @@ dt = T / num_steps  # Time step size
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
 	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	#cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
@@ -134,10 +134,10 @@ if mesh_comm.rank == model_rank:
 #Add the hole back
 if  mesh_comm.rank == model_rank:
 	cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	#cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
-	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
+	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
 	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
 	gmsh.model.occ.synchronize()
 
@@ -172,9 +172,12 @@ else:
 
 #Initial condition
 def initial_condition(x, disp=1, cct=0.5):
-    return np.sin(disp*x[0]) * cct + cct
+    return x[0] * 0 + 10
 
-"""
+def diracd(x):
+    return 1/(np.abs(0.002)*np.pi)*np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.002)
+
+
 #Spatial exclusion model
 
 #Boundary markers
@@ -205,8 +208,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(1) + dt * a * u_s * v_s * ds(2)
-L_s = u_sn * v_s * dx + dt * b * v_s * ds(1) + dt * b * v_s * ds(2)
+a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(1) #+ dt * a * u_s * v_s * ds(2)
+L_s = u_sn * v_s * dx + dt * b * v_s * ds(1) #+ dt * b * v_s * ds(2)
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
@@ -217,6 +220,7 @@ linearform_s = form(L_s)
 A_s = assemble_matrix(bilinearform_s)
 A_s.assemble()
 b_s = create_vector(linearform_s)
+
 
 solver = PETSc.KSP().create(domain_spatial_exclusion.comm)
 solver.setOperators(A_s)
@@ -239,7 +243,7 @@ sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
 
 renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, max(u_s.x.array)])
+                            clim=[0, 10])
 
 #xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
 #xdmf.write_mesh(domain_spatial_exclusion)
@@ -247,7 +251,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
 for i in range(num_steps):
     t += dt
     with b_s.localForm() as loc_b:
-	loc_b.set(0)
+    	loc_b.set(0)
     assemble_vector(b_s, linearform_s)
     # Solve linear problem
     solver.solve(b_s, u_s.vector)
@@ -262,7 +266,6 @@ for i in range(num_steps):
 #plotter.close()
 #xdmf.close()
 
-"""
 
 #Point source model
 #fdimp = domain_point_source.topology.dim - 1
@@ -271,9 +274,9 @@ for i in range(num_steps):
 #bc = fem.dirichletbc(PETSc.ScalarType(0), fem.locate_dofs_topological(V, fdim, boundary_facets), V)
 
 #Marking boundaries and subdomains
-boundary_locator = [(1, lambda x: np.isclose(x[0], 0) | np.isclose(x[0], L) | np.isclose(x[1], 0) | np.isclose(x[1], W)),
-              (2, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
-              (3, lambda x: np.isclose((x[0]-c2_x)**2+(x[1]-c2_y)**2,r2**2))]
+boundary_locator = [(0, lambda x: np.isclose(x[0], 0) | np.isclose(x[0], L) | np.isclose(x[1], 0) | np.isclose(x[1], W)),
+              (1, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
+              (2, lambda x: np.isclose((x[0]-c2_x)**2+(x[1]-c2_y)**2,r2**2))]
 
 facet_indices, facet_markers = [], []
 for (marker, locator) in boundary_locator:
@@ -302,7 +305,7 @@ subdomain_locator = [(0, entire_dish_domain),
 
 facet_indices2, facet_markers2 = [], []
 for (marker, locator) in subdomain_locator:
-    facets = mesh.locate_entities(domain_point_source, , locator)
+    facets = mesh.locate_entities(domain_point_source, gdim, locator)
     facet_indices2.append(facets)
     facet_markers2.append(np.full_like(facets, marker))
 facet_indices2 = np.hstack(facet_indices2).astype(np.int32)
@@ -310,7 +313,7 @@ facet_markers2 = np.hstack(facet_markers2).astype(np.int32)
 sorted_facets2 = np.argsort(facet_indices2)
 facet_tag2 = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices2[sorted_facets2], facet_markers2[sorted_facets2])
 
-dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
+#dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -320,40 +323,52 @@ u_p = TrialFunction(V_p)
 v_p = TestFunction(V_p)
 u_pn = Function(V_p)
 u_pn.interpolate(initial_condition)
+delta = Function(V_p)
+delta.interpolate(diracd)
 
-delta1 = Function(V_p)
-#delta2 = Function(V_p)
-dofs = fem.locate_dofs_geometrical(V_p,  lambda x: np.isclose(x.T, [c1_x, c1_y, 0]).all(axis=1))
-delta1.x.array[dofs] = 1
+
 #dofs = fem.locate_dofs_geometrical(V_p,  lambda x: np.isclose(x.T, [c2_x, c2_y, 0]).all(axis=1))
 #delta2.x.array[dofs] = 1
 
-
-a_p = u_p * v_p * dx(0) + dt * D * dot(grad(u_p), grad(v_p)) * dx(0)
-L_p = u_pn * v_p * dx(0)
+a_p = u_p * v_p * dx + dt * D * dot(grad(u_p), grad(v_p)) * dx
+L_p = u_pn * v_p * dx + b * dt * delta * v_p * dx
 
 A_p = assemble_matrix(form(a_p))
 A_p.assemble()
 b_p = create_vector(form(L_p))
 
-R = functionspace(mesh, 'R', 0)
-r1_p = TrialFunction(R)
-s1_p = TestFunction(R)
+t1_p = dt * a * u_p * ds(0)
+q1_p = delta * v_p * dx
+tt1_p = create_vector(form(t1_p))
+qq1_p = create_vector(form(q1_p))
+assemble_vector(tt1_p, form(t1_p))
+assemble_vector(qq1_p, form(q1_p))
 
-t1_p = dt * r1_p * u_p * ds(1)
-q1_p = s1_p * delta1 * v_p * ds(1)
-T1_p = assemble_matrix(form(t1_p))
-Q1_p = assemble_matrix(form(q1_p))
+
+T1_p = PETSc.Mat().create()
+T1_p.setSizes([tt1_p.getSize(), 1])
+T1_p.setFromOptions()
+T1_p.setUp()
+T1_p.setValues(range(tt1_p.getSize()),0,tt1_p)
 T1_p.assemble()
+Q1_p = PETSc.Mat().create()
+Q1_p.setSizes([qq1_p.getSize(), 1])
+Q1_p.setFromOptions()
+Q1_p.setUp()
+Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
-A1_p = T1_p.matMult(Q1_p) #creatTranspose(Q1_p)? Or creatTranspose(T1_p)?
-A_p.axpy(1.0, A1_p)
+
+A1_p = T1_p.matTransposeMult(Q1_p)
+A_p.axpy(1, A1_p)
 
 
-solver = PETSc.KSP().create(domain_spatial_exclusion.comm)
+solver = PETSc.KSP().create(domain_point_source.comm)
 solver.setOperators(A_p)
 solver.setType(PETSc.KSP.Type.PREONLY)
-solver.getPC().setType(PETSc.PC.Type.LU)
+#solver.getPC().setType(PETSc.PC.Type.LU)
+
+
+u_p = Function(V_p)
 
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
 
@@ -369,16 +384,17 @@ sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
 
 renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, max(u_p.x.array)])
+                            clim=[0, 10])
 
-#xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
-#xdmf.write_mesh(domain_spatial_exclusion)
+#xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
+#xdmf.write_mesh(domain_point_source)
+
 
 for i in range(num_steps):
     t += dt
-    with b_p.localForm() as loc_b:
-            loc_b.set(0)
-    assemble_vector(b_p, linearform_p)
+    with b_p.localForm() as loc_bb:
+        loc_bb.set(0)
+    assemble_vector(b_p, form(L_p))
     # Solve linear problem
     solver.solve(b_p, u_p.vector)
     u_p.x.scatter_forward()

@@ -1,90 +1,55 @@
-# Create a point source for Poisson problem
-# Author: Jørgen S. Dokken
-# SPDX-License-Identifier: MIT
-
-from mpi4py import MPI
-from petsc4py import PETSc
-import os
-
-import dolfinx
-import dolfinx.fem.petsc
 import numpy as np
 import ufl
-import pyvista
+from dolfinx import fem, io, mesh, plot
+from ufl import ds, dx, grad, inner
+from mpi4py import MPI
+import dolfinx.fem.petsc
+from dolfinx.fem import functionspace, form, Function
+from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc 
+import dolfinx.plot
+from petsc4py.PETSc import ScalarType
 
-import point_source as ps
+msh = mesh.create_rectangle(comm=MPI.COMM_WORLD,
+                            points=((0.0, 0.0), (10.0, 10.0)), n=(100, 100),
+                            cell_type=mesh.CellType.triangle,)
+V = fem.FunctionSpace(msh, ("Lagrange", 1))
 
-N = 80
-domain = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, N, N)
-domain.name = "mesh"
-domain.topology.create_connectivity(1, 2)
-
-V = dolfinx.fem.functionspace(domain, ("Lagrange", 1))
-
-facets = dolfinx.mesh.exterior_facet_indices(domain.topology)
-
-if domain.comm.rank == 0:
-    points = np.array([[0.68, 0.36, 0]], dtype=domain.geometry.x.dtype)
-    points1 = np.array([[0.3, 0.66, 0]], dtype=domain.geometry.x.dtype)
-else:
-    points = np.zeros((0, 3), dtype=domain.geometry.x.dtype)
-
+#facets = mesh.locate_entities_boundary(msh, dim=1, marker=lambda x: np.logical_or(np.logical_or(np.isclose(x[0], 0.0), np.isclose(x[0], 10.0)),
+                                                                                  #np.logical_or(np.isclose(x[1], 0.0), np.isclose(x[1], 10.0))))
+#dofs = fem.locate_dofs_topological(V=V, entity_dim=1, entities=facets)
+#bc = fem.dirichletbc(value=ScalarType(6), dofs=dofs, V=V)
 
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
-a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-a_compiled = dolfinx.fem.form(a)
+x = ufl.SpatialCoordinate(msh)
+
+f = fem.Function(V)
+dofs = fem.locate_dofs_geometrical(V,  lambda x: np.isclose(x.T, [2.5, 5, 0]).all(axis=1))
+f.x.array[dofs] = 1
+dofs = fem.locate_dofs_geometrical(V,  lambda x: np.isclose(x.T, [7.5, 5, 0]).all(axis=1))
+f.x.array[dofs] = -1
+
+a = inner(grad(u), grad(v)) * dx
+L = f * v * dx
+l = create_vector(form(L))
+l.assemble()
 
 
-dofs = dolfinx.fem.locate_dofs_topological(V, 1, facets)
-u_bc = dolfinx.fem.Constant(domain, 0.)
-bc = dolfinx.fem.dirichletbc(u_bc, dofs, V)
-
-b = dolfinx.fem.Function(V)
-b.x.array[:] = 0
-cells, basis_values = ps.compute_cell_contributions(V, points)
-for cell, basis_value in zip(cells, basis_values):
-    dofs = V.dofmap.cell_dofs(cell)
-    b.x.array[dofs] += basis_value
-cells, basis_values = ps.compute_cell_contributions(V, points1)
-for cell, basis_value in zip(cells, basis_values):
-    dofs = V.dofmap.cell_dofs(cell)
-    b.x.array[dofs] += basis_value
-dolfinx.fem.petsc.apply_lifting(b.vector, [a_compiled], [[bc]])
-b.x.scatter_reverse(dolfinx.la.InsertMode.add)
-dolfinx.fem.petsc.set_bc(b.vector, [bc])
-b.x.scatter_forward()
-
-A = dolfinx.fem.petsc.assemble_matrix(a_compiled, bcs=[bc])
-A.assemble()
-
-ksp = PETSc.KSP().create(domain.comm)
-ksp.setOperators(A)
-ksp.setType(PETSc.KSP.Type.PREONLY)
-ksp.getPC().setType(PETSc.PC.Type.LU)
-ksp.getPC().setFactorSolverType("mumps")
-
-
-uh = dolfinx.fem.Function(V)
-ksp.solve(b.vector, uh.vector)
-uh.x.scatter_forward()
+problem = fem.petsc.LinearProblem(a, L, petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+uh = problem.solve()
 
 try:
     import pyvista
-
-    cells, types, x = dolfinx.plot.vtk_mesh(V)
+    #pyvista.start_xvfb()
+    cells, types, x = plot.vtk_mesh(V)
     grid = pyvista.UnstructuredGrid(cells, types, x)
     grid.point_data["u"] = uh.x.array.real
     grid.set_active_scalars("u")
     plotter = pyvista.Plotter()
-    plotter.add_mesh(grid, show_edges=True)
+    plotter.add_mesh(grid, show_edges=False)
     warped = grid.warp_by_scalar()
-    plotter.add_mesh(grid)
-    if pyvista.OFF_SCREEN:
-        pyvista.start_xvfb(wait=0.1)
-        plotter.screenshot("uh_poisson.png")
-    else:
-        plotter.show()
+    plotter.add_mesh(warped)
+    plotter.show(cpos='xy')
 except ModuleNotFoundError:
     print("'pyvista' is required to visualise the solution")
     print("Install 'pyvista' with pip: 'python3 -m pip install pyvista'")
