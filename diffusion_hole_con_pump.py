@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib as mpl
 import os
 import gmsh
-from dolfinx import fem, mesh, io, plot
+from dolfinx import fem, mesh, io, plot, geometry
 from dolfinx.io import gmshio
 from dolfinx.fem import functionspace, form, Function
 from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
@@ -175,7 +175,6 @@ V_p = functionspace(domain_point_source, ("Lagrange", 1))
 def initial_condition(x, disp=1, cct=0.5):
     return x[0] * 0 + 10
 
-"""
 #Spatial exclusion model
 
 #Boundary markers
@@ -245,7 +244,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
 
 #xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
 #xdmf.write_mesh(domain_spatial_exclusion)
-
+"""
 for i in range(num_steps):
     t += dt
     with b_s.localForm() as loc_b:
@@ -261,7 +260,7 @@ for i in range(num_steps):
     warped.point_data["u_s"][:] = u_s.x.array
     plotter.write_frame()
 #os.remove("spactial_exclusion_try.gif")
-plotter.close()
+#plotter.close()
 #xdmf.close()
 """
 
@@ -288,24 +287,24 @@ def xx(x):
 def yy(x):
     return (x[1]-c1_y)**2/2
 
-boundary_locator = [(0, lambda x: np.isclose(x[0],0) | np.isclose(x[0],L) | np.isclose(x[1],0) | np.isclose(x[1],W)),
-              (1, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
-              (2, lambda x: np.isclose((x[0]-c2_x)**2+(x[1]-c2_y)**2,r2**2))]
+#boundary_locator = [(0, lambda x: np.isclose(x[0],0) | np.isclose(x[0],L) | np.isclose(x[1],0) | np.isclose(x[1],W)),
+#              (1, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
+#              (2, lambda x: np.isclose((x[0]-c2_x)**2+(x[1]-c2_y)**2,r2**2))]
 
-facet_indices, facet_markers = [], []
-for (marker, locator) in boundary_locator:
-    facets = mesh.locate_entities(domain_point_source, fdim, locator)
-    facet_indices.append(facets)
-    facet_markers.append(np.full_like(facets, marker))
-facet_indices = np.hstack(facet_indices).astype(np.int32)
-facet_markers = np.hstack(facet_markers).astype(np.int32)
-sorted_facets = np.argsort(facet_indices)
-facet_tag = mesh.meshtags(domain_point_source, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
+#facet_indices, facet_markers = [], []
+#for (marker, locator) in boundary_locator:
+#    facets = mesh.locate_entities(domain_point_source, fdim, locator)
+#    facet_indices.append(facets)
+#    facet_markers.append(np.full_like(facets, marker))
+#facet_indices = np.hstack(facet_indices).astype(np.int32)
+#facet_markers = np.hstack(facet_markers).astype(np.int32)
+#sorted_facets = np.argsort(facet_indices)
+#facet_tag = mesh.meshtags(domain_point_source, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
-ds = Measure("ds", domain=domain_point_source, subdomain_data=facet_tag)
+#ds = Measure("ds", domain=domain_point_source, subdomain_data=facet_tag)
 
 def entire_dish_domain(x):
-	return x[0] * 0 + 1 >= 0  
+	return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
 	return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= r1**2 
@@ -327,7 +326,7 @@ facet_markers2 = np.hstack(facet_markers2).astype(np.int32)
 sorted_facets2 = np.argsort(facet_indices2)
 facet_tag2 = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices2[sorted_facets2], facet_markers2[sorted_facets2])
 
-#dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
+dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -353,7 +352,8 @@ A_p.assemble()
 b_p = create_vector(form(L_p))
 
 #t1_p = dt * a * u_p * ds(1)
-t1_p = 2 * dt * a * fxi * u_p * dx + dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx 
+t1_p = 2 * dt * a / r1 * u_p * dx(1) + dt * a / r1 * dot(grad(fxx),grad(u_p)) * dx(1) + dt * a / r1 * dot(grad(fyy),grad(u_p)) * dx(1) 
+#t1_p = 2 * dt * a * fxi * u_p * dx + dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx 
 q1_p = delta * v_p * dx
 tt1_p = create_vector(form(t1_p))
 qq1_p = create_vector(form(q1_p))
@@ -407,6 +407,13 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
 #xdmf.write_mesh(domain_point_source)
 
 
+def restriction(x0):
+    tree = geometry.bb_tree(domain_point_source, domain_point_source.geometry.dim)
+    cell_candidates = geometry.compute_collisions_points(tree, x0)
+    cell = geometry.compute_colliding_cells(domain_point_source, cell_candidates, x0)
+    return u_p.eval(x0,cell)
+
+
 for i in range(num_steps):
     t += dt
     with b_p.localForm() as loc_bb:
@@ -421,7 +428,12 @@ for i in range(num_steps):
     warped.points[:, :] = new_warped.points
     warped.point_data["u_p"][:] = u_p.x.array
     plotter.write_frame()
+    u_p_res = Function(V_s)
+    #u_p_res.interpolate(restriction)
+
+    
+
 #os.remove("spactial_exclusion_try.gif")
-plotter.close()
+#plotter.close()
 #xdmf.close()
 
