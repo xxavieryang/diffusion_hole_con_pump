@@ -1,15 +1,18 @@
 from mpi4py import MPI
 import numpy as np
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import os
 import gmsh
 from dolfinx import fem, mesh, io, plot, geometry
 from dolfinx.io import gmshio
-from dolfinx.fem import functionspace, form, Function
+from dolfinx.fem import functionspace, form, Function, assemble_scalar
 from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
-                 as_vector, div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
+	             div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
 import pyvista
+
 import point_source as ps
+#import point_source as ps
 
 
 #Create the computation domain and geometric constant
@@ -29,14 +32,13 @@ model_rank = 0
 
 
 #Physical Constants
-D = 0.5
-a = 10
+D = 10
+a = 1
 b = 1
 t = 0  # Start time
-T = 10.0  # Final time
-num_steps = 500
-dt = T / num_steps  # Time step size
-
+T = 10000.0  # Final time
+num_steps = 5000
+dt = T / num_steps  # Time step size=
 
 #Define the Petri dish and the cells
 if mesh_comm.rank == model_rank:
@@ -116,7 +118,6 @@ from dolfinx import plot
 #plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 #plotter.view_xy()
 #if not pyvista.OFF_SCREEN:
-
     #plotter.show()
     #figure = plotter.screenshot("spatial_exclusion_mesh.png")
 #else:
@@ -173,7 +174,7 @@ V_p = functionspace(domain_point_source, ("Lagrange", 1))
 
 #Initial condition
 def initial_condition(x, disp=1, cct=0.5):
-    return x[0] * 0 + 10
+    return x[0] * 0 + 1
 
 #Spatial exclusion model
 
@@ -182,6 +183,8 @@ fdim = domain_spatial_exclusion.topology.dim - 1
 #boundary_facets = mesh.locate_entities_boundary(
 #    domain_spatial_exclusion, fdim, lambda x: np.full(x.shape[1], True, dtype=bool))
 #bc = fem.dirichletbc(PETSc.ScalarType(0), fem.locate_dofs_topological(V, fdim, boundary_facets), V)
+
+dx_s = Measure("dx", domain=domain_spatial_exclusion)
 
 boundary_locator = [(0, lambda x: np.isclose(x[0], 0) | np.isclose(x[0], L) | np.isclose(x[1], 0) | np.isclose(x[1], W)),
               (1, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
@@ -197,7 +200,8 @@ facet_markers = np.hstack(facet_markers).astype(np.int32)
 sorted_facets = np.argsort(facet_indices)
 facet_tag = mesh.meshtags(domain_spatial_exclusion, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
-ds = Measure("ds", domain=domain_spatial_exclusion, subdomain_data=facet_tag)
+
+ds_s = Measure("ds", domain=domain_spatial_exclusion, subdomain_data=facet_tag)
 
 
 u_s = TrialFunction(V_s)
@@ -205,8 +209,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx + dt * D * dot(grad(u_s), grad(v_s)) * dx + dt * a * u_s * v_s * ds(1) #+ dt * a * u_s * v_s * ds(2)
-L_s = u_sn * v_s * dx + dt * b * v_s * ds(1) #+ dt * b * v_s * ds(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
+L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
@@ -219,21 +223,19 @@ A_s.assemble()
 b_s = create_vector(linearform_s)
 
 
-solver = PETSc.KSP().create(domain_spatial_exclusion.comm)
-solver.setOperators(A_s)
-solver.setType(PETSc.KSP.Type.PREONLY)
-solver.getPC().setType(PETSc.PC.Type.LU)
+solver_s = PETSc.KSP().create(domain_spatial_exclusion.comm)
+solver_s.setOperators(A_s)
+solver_s.setType(PETSc.KSP.Type.PREONLY)
+solver_s.getPC().setType(PETSc.PC.Type.LU)
 
-u_s = Function(V_s)
 
+"""
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
-
 plotter = pyvista.Plotter()
 plotter.open_gif("spactial_exclusion_try.gif", fps=10)
 
 grid.point_data["u_s"] = u_s.x.array
-warped = grid.warp_by_scalar("u_s", factor=1)
-
+#warped = grid.warp_by_scalar("u_s", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
@@ -244,7 +246,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
 
 #xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "spatial_exclusion.xdmf", "w")
 #xdmf.write_mesh(domain_spatial_exclusion)
-"""
+
 for i in range(num_steps):
     t += dt
     with b_s.localForm() as loc_b:
@@ -272,17 +274,15 @@ for i in range(num_steps):
 
 #Marking boundaries and subdomains
 
-def diracd(x):
-    return np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.02)/(0.02*np.pi)
 
+def diracd1(x):
+    return np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.002)/(0.002*np.pi)
 
 def xi(x):
     return (x[0]-c1_x)**2+(x[1]-c1_y)**2<=r1**2
 
-
 def xx(x):
     return (x[0]-c1_x)**2/2
-
 
 def yy(x):
     return (x[1]-c1_y)**2/2
@@ -301,19 +301,19 @@ def yy(x):
 #sorted_facets = np.argsort(facet_indices)
 #facet_tag = mesh.meshtags(domain_point_source, fdim, facet_indices[sorted_facets], facet_markers[sorted_facets])
 
-#ds = Measure("ds", domain=domain_point_source, subdomain_data=facet_tag)
+#ds_p = Measure("ds_p", domain=domain_point_source, subdomain_data=facet_tag)
 
-def entire_dish_domain(x):
-	return np.full(x.shape[1],True,dtype=bool) 
+
+#def entire_dish_domain(x):
+    #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-	return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= r1**2 
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= r1**2 
 
 def cell2_subdomain(x):
-	return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= r2**2 
+    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= r2**2 
 
-subdomain_locator = [(0, entire_dish_domain),
-		(1, cell1_subdomain),
+subdomain_locator = [(1, cell1_subdomain),
               (2, cell2_subdomain)]
 
 facet_indices2, facet_markers2 = [], []
@@ -326,7 +326,7 @@ facet_markers2 = np.hstack(facet_markers2).astype(np.int32)
 sorted_facets2 = np.argsort(facet_indices2)
 facet_tag2 = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices2[sorted_facets2], facet_markers2[sorted_facets2])
 
-dx = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
+dx_p = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -336,8 +336,8 @@ u_p = TrialFunction(V_p)
 v_p = TestFunction(V_p)
 u_pn = Function(V_p)
 u_pn.interpolate(initial_condition)
-delta = Function(V_p)
-delta.interpolate(diracd)
+delta1 = Function(V_p)
+delta1.interpolate(diracd1)
 fxi = Function(V_p)
 fxi.interpolate(xi)
 fxx = Function(V_p)
@@ -345,21 +345,23 @@ fxx.interpolate(xx)
 fyy = Function(V_p)
 fyy.interpolate(yy)
 
-a_p = u_p * v_p * dx + dt * D * dot(grad(u_p), grad(v_p)) * dx
-L_p = u_pn * v_p * dx + b * dt * delta * v_p * dx
+
+a_p = u_p * v_p * dx_p + dt * D * dot(grad(u_p), grad(v_p)) * dx_p
+L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p
+linearform_p = form (L_p)
+
 A_p = assemble_matrix(form(a_p))
 A_p.assemble()
 b_p = create_vector(form(L_p))
 
-#t1_p = dt * a * u_p * ds(1)
-t1_p = 2 * dt * a / r1 * u_p * dx(1) + dt * a / r1 * dot(grad(fxx),grad(u_p)) * dx(1) + dt * a / r1 * dot(grad(fyy),grad(u_p)) * dx(1) 
-#t1_p = 2 * dt * a * fxi * u_p * dx + dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx 
-q1_p = delta * v_p * dx
+
+t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy),grad(u_p)) * dx_p(1) 
+#t1_p = 2 * dt * a * fxi * u_p * dx_p + dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx_p + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx_p 
+q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
 qq1_p = create_vector(form(q1_p))
 assemble_vector(tt1_p, form(t1_p))
 assemble_vector(qq1_p, form(q1_p))
-
 
 
 T1_p = PETSc.Mat().create()
@@ -374,66 +376,83 @@ Q1_p.setFromOptions()
 Q1_p.setUp()
 Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
-
-A1_p = T1_p.matTransposeMult(Q1_p)
+A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
 
 
-solver = PETSc.KSP().create(domain_point_source.comm)
-solver.setOperators(A_p)
-solver.setType(PETSc.KSP.Type.PREONLY)
-#solver.getPC().setType(PETSc.PC.Type.LU)
+solver_p = PETSc.KSP().create(domain_point_source.comm)
+solver_p.setOperators(A_p)
+#solver_p.setType(PETSc.KSP.Type.PREONLY)
+#solver_p.getPC().setType(PETSc.PC.Type.LU)
 
-
+u_s = Function(V_s)
 u_p = Function(V_p)
+u_p_res = Function(V_s)
+w = Function(V_s)
 
-grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
 
+grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
-plotter.open_gif("point_source_try.gif", fps=10)
-
-grid.point_data["u_p"] = u_p.x.array
-warped = grid.warp_by_scalar("u_p", factor=1)
-
+plotter.open_gif("difference.gif", fps=10)
+grid.point_data["w"] = w.x.array
+warped = grid.warp_by_scalar("w", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-
-renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 10])
-
+                            clim=[0, 2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
 
-
-def restriction(x0):
-    tree = geometry.bb_tree(domain_point_source, domain_point_source.geometry.dim)
-    cell_candidates = geometry.compute_collisions_points(tree, x0)
-    cell = geometry.compute_colliding_cells(domain_point_source, cell_candidates, x0)
-    return u_p.eval(x0,cell)
+if domain_spatial_exclusion.comm.rank == 0:
+    e_w = np.zeros(num_steps, dtype=np.float64)
+    t_e = np.zeros(num_steps, dtype=np.float64)
+    i = 0
 
 
 for i in range(num_steps):
     t += dt
+    t_e[i] = t
+    with b_s.localForm() as loc_b:
+    	loc_b.set(0)
+    assemble_vector(b_s, linearform_s)
+    # Solve linear problem
+    solver_s.solve(b_s, u_s.vector)
+    u_s.x.scatter_forward()
+    u_sn.x.array[:] = u_s.x.array
     with b_p.localForm() as loc_bb:
         loc_bb.set(0)
-    assemble_vector(b_p, form(L_p))
+    assemble_vector(b_p, linearform_p)
     # Solve linear problem
-    solver.solve(b_p, u_p.vector)
+    solver_p.solve(b_p, u_p.vector)
     u_p.x.scatter_forward()
     u_pn.x.array[:] = u_p.x.array
     #xdmf.write_function(u_p, t)
-    new_warped = grid.warp_by_scalar("u_p", factor=1)
+    u_p_res.interpolate(u_p, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
+        u_p_res.function_space.mesh._cpp_object,
+        u_p_res.function_space.element,
+        u_p.function_space.mesh._cpp_object,padding=0))
+    u_p_res.x.scatter_forward()
+    w.x.array[:] = np.abs(u_p_res.x.array[:] - u_s.x.array[:])
+    new_warped = grid.warp_by_scalar("w", factor=1)
     warped.points[:, :] = new_warped.points
-    warped.point_data["u_p"][:] = u_p.x.array
+    warped.point_data["w"][:] = w.x.array
     plotter.write_frame()
-    u_p_res = Function(V_s)
-    #u_p_res.interpolate(restriction)
+    eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
+    e_w[i] = np.sqrt(np.abs(eL2_local))
+    print(i+1,":",e_w[i])
+    i += 1
 
-    
+       
+fig = plt.figure(figsize=(35, 10))
+l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=2)
+plt.title("L_2")
+plt.grid()
+plt.legend()
+plt.savefig("Comparison.png")
+
 
 #os.remove("spactial_exclusion_try.gif")
 #plotter.close()
 #xdmf.close()
-
