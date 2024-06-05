@@ -427,7 +427,7 @@ for i in range(num_steps):
     print(e_w[i])
 
 fig = plt.figure(figsize=(35, 10))
-l1 = plt.plot(t_e, e_w, label="L2 Error"), linewidth=2)
+l1 = plt.plot(t_e, e_w, label="L2-error"), linewidth=2)
 plt.title("L_2")
 plt.grid()
 plt.legend()
