@@ -13,14 +13,15 @@ import pandas as pd
 import csv
 from ufl import nabla_div
 
+
 """
 File Description:
 Domain: Computational domain (container) with the hole as a subdomain
 Mesh: Fixed mesh
 Method: Immersed boundary
 
-BVP to be solved: du/dt - D\Delta u = \int \phi(x)n(x)\delta(x) d\Gamma, in \Omega\
-                  D\nabla u\cdot n = 0, on \Gamma
+BVP to be solved: du/dt - D $Delta$ u = int $phi$(x)n(x)$delta$(x) d$Gamma$, in $Omega$\
+                  D\nabla u $cdot$ n = 0, on $Gamma$
 
 """
 
@@ -291,8 +292,8 @@ w_H1_list = []
 c_star_sqrt_list = []
 c_star_1_list, c_star_2_list, c_star_list = [], [], []
 
-T = 40 ### final time
-num_steps = 1000 ### number of time steps
+T = 2030 ### final time
+num_steps = 5000 ### number of time steps
 dt = T / num_steps ### time step size
 
 D = 0.1 ### diffusion rate
@@ -457,7 +458,7 @@ for n in range(num_steps):
     w_L2_list += [sqrt(assemble(inner(w, w)*dx_h))]
     w_H1_list += [sqrt(assemble((inner(w, w) + inner(grad(w), grad(w)))*dx_h))]
 
-    print("||u_h||_{L2}: ", norm(u_h, 'l2'), sqrt(assemble(inner(u_h, u_h)*dx_h)))
+    print("||u_h||_{L2}: ", sqrt(assemble(inner(u_h, u_h)*dx_h)))
     print("||u_ps||_{L2}: ", sqrt(assemble(inner(u_ps, u_ps)*dx_ps(0))))
     print(u_ps_ad(0.5, 0.0), u_ps(0.5, 0.0))
     print("||w||_{L2}: ", sqrt(assemble(inner(w, w)*dx_h)))

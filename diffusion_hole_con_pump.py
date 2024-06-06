@@ -19,10 +19,10 @@ import point_source as ps
 gmsh.initialize()
 
 L = W = 10
-r1 = 0.2
+r1 = 0.5
 c1_x = 5
 c1_y = 5
-r2 = 0.2
+r2 = 0.5
 c2_x = 6.2
 c2_y = 6.7
 gdim = 2
@@ -32,13 +32,14 @@ model_rank = 0
 
 
 #Physical Constants
-D = 10
+D = 0.1
 a = 1
 b = 1
-t = 0  # Start time
-T = 10000.0  # Final time
+c = 2
+t = 0  
+T = 4000.0
 num_steps = 5000
-dt = T / num_steps  # Time step size=
+dt = T / num_steps
 
 #Define the Petri dish and the cells
 if mesh_comm.rank == model_rank:
@@ -84,7 +85,7 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.addPhysicalGroup(1,cells,cells_marker)
 	gmsh.model.setPhysicalName(1,cells_marker,"Cell")
 
-res_min = r1 / 3
+res_min = r1 / 7
 if mesh_comm.rank == model_rank:
 	distance_field = gmsh.model.mesh.field.add("Distance")
 	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cells)
@@ -173,8 +174,8 @@ V_p = functionspace(domain_point_source, ("Lagrange", 1))
 
 
 #Initial condition
-def initial_condition(x, disp=1, cct=0.5):
-    return x[0] * 0 + 1
+def initial_condition(x, disp=1, cct=c):
+    return x[0] * 0 + cct
 
 #Spatial exclusion model
 
@@ -225,8 +226,8 @@ b_s = create_vector(linearform_s)
 
 solver_s = PETSc.KSP().create(domain_spatial_exclusion.comm)
 solver_s.setOperators(A_s)
-solver_s.setType(PETSc.KSP.Type.PREONLY)
-solver_s.getPC().setType(PETSc.PC.Type.LU)
+#solver_s.setType(PETSc.KSP.Type.PREONLY)
+#solver_s.getPC().setType(PETSc.PC.Type.LU)
 
 
 """
@@ -394,14 +395,14 @@ w = Function(V_s)
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("difference.gif", fps=10)
-grid.point_data["w"] = w.x.array
-warped = grid.warp_by_scalar("w", factor=1)
+grid.point_data["u_p_res"] = u_p_res.x.array
+warped = grid.warp_by_scalar("u_p_res", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 2])
+                            clim=[0.7, 2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
 
@@ -434,13 +435,14 @@ for i in range(num_steps):
         u_p_res.function_space.element,
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
-    w.x.array[:] = np.abs(u_p_res.x.array[:] - u_s.x.array[:])
-    new_warped = grid.warp_by_scalar("w", factor=1)
+    w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
+    new_warped = grid.warp_by_scalar("u_p_res", factor=1)
     warped.points[:, :] = new_warped.points
-    warped.point_data["w"][:] = w.x.array
+    warped.point_data["u_p_res"][:] = u_p_res.x.array
     plotter.write_frame()
     eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
-    e_w[i] = np.sqrt(np.abs(eL2_local))
+    sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
+    e_w[i] = np.sqrt(np.abs(eL2_local)) #/ np.sqrt(np.abs(sL2_local))
     print(i+1,":",e_w[i])
     i += 1
 
