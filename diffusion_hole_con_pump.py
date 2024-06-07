@@ -19,10 +19,10 @@ import point_source as ps
 gmsh.initialize()
 
 L = W = 10
-r1 = 0.5
+r1 = 0.25
 c1_x = 5
 c1_y = 5
-r2 = 0.5
+r2 = 0.25
 c2_x = 6.2
 c2_y = 6.7
 gdim = 2
@@ -32,12 +32,12 @@ model_rank = 0
 
 
 #Physical Constants
-D = 0.1
+D = 10
 a = 1
 b = 1
 c = 2
 t = 0  
-T = 4000.0
+T = 200.0
 num_steps = 5000
 dt = T / num_steps
 
@@ -86,6 +86,7 @@ if mesh_comm.rank == model_rank:
 	gmsh.model.setPhysicalName(1,cells_marker,"Cell")
 
 res_min = r1 / 7
+
 if mesh_comm.rank == model_rank:
 	distance_field = gmsh.model.mesh.field.add("Distance")
 	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cells)
@@ -160,17 +161,17 @@ if mesh_comm.rank == model_rank:
 domain_point_source, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V_p = functionspace(domain_point_source, ("Lagrange", 1))
 
-#topology, cell_types, geometry = plot.vtk_mesh(V_p)
-#grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-#plotter = pyvista.Plotter()
+topology, cell_types, geometry = plot.vtk_mesh(V_p)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+plotter = pyvista.Plotter()
 
-#plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
-#plotter.view_xy()
-#if not pyvista.OFF_SCREEN:
-    #plotter.show()
-    #plotter.screenshot("point_source_mesh.png")
-#else:
-    #figure = plotter.screenshot("point_source_mesh.png")
+plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+    plotter.screenshot("point_source" + str(a) + "_mesh.png")
+else:
+    figure = plotter.screenshot("point_source_mesh.png")
 
 
 #Initial condition
@@ -212,6 +213,7 @@ u_sn.interpolate(initial_condition)
 
 a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
 L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
+
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
 from petsc4py import PETSc
@@ -277,7 +279,7 @@ for i in range(num_steps):
 
 
 def diracd1(x):
-    return np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.002)/(0.002*np.pi)
+    return np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.02)/(0.02*np.pi)
 
 def xi(x):
     return (x[0]-c1_x)**2+(x[1]-c1_y)**2<=r1**2
@@ -309,10 +311,11 @@ def yy(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= r1**2 
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.042
 
 def cell2_subdomain(x):
-    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= r2**2 
+    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.042
+
 
 subdomain_locator = [(1, cell1_subdomain),
               (2, cell2_subdomain)]
@@ -355,9 +358,13 @@ A_p = assemble_matrix(form(a_p))
 A_p.assemble()
 b_p = create_vector(form(L_p))
 
+pL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(delta1 * dx_p)), op=MPI.SUM)
+qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
+print(pL2_local)
+print(qL2_local)
 
 t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy),grad(u_p)) * dx_p(1) 
-#t1_p = 2 * dt * a * fxi * u_p * dx_p + dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx_p + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx_p 
+#t1_p = 2 * dt * a * fxi * u_p * dx_p #+ dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx_p + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx_p 
 q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
 qq1_p = create_vector(form(q1_p))
@@ -395,14 +402,14 @@ w = Function(V_s)
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("difference.gif", fps=10)
-grid.point_data["u_p_res"] = u_p_res.x.array
-warped = grid.warp_by_scalar("u_p_res", factor=1)
+grid.point_data["w"] = w.x.array
+warped = grid.warp_by_scalar("w", factor=5)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0.7, 2])
+                            clim=[0, 0.2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
 
@@ -411,6 +418,7 @@ if domain_spatial_exclusion.comm.rank == 0:
     t_e = np.zeros(num_steps, dtype=np.float64)
     i = 0
 
+print(a, b, c, D)
 
 for i in range(num_steps):
     t += dt
@@ -436,23 +444,25 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("u_p_res", factor=1)
+    new_warped = grid.warp_by_scalar("w", factor=5)
     warped.points[:, :] = new_warped.points
-    warped.point_data["u_p_res"][:] = u_p_res.x.array
+    warped.point_data["w"][:] = w.x.array
     plotter.write_frame()
-    eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
-    sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
-    e_w[i] = np.sqrt(np.abs(eL2_local)) #/ np.sqrt(np.abs(sL2_local))
-    print(i+1,":",e_w[i])
+    eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
+    sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM)
+    qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
+    print(i+1, np.sqrt(eL2_local), np.sqrt(sL2_local), np.sqrt(qL2_local))
+    e_w[i] = qL2_local
     i += 1
 
        
 fig = plt.figure(figsize=(35, 10))
-l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=2)
+l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=4)
 plt.title("L_2")
 plt.grid()
 plt.legend()
-plt.savefig("Comparison.png")
+#plt.show()
+plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) +".png")
 
 
 #os.remove("spactial_exclusion_try.gif")
