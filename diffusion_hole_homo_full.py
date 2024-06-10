@@ -13,15 +13,14 @@ import pandas as pd
 import csv
 from ufl import nabla_div
 
-
 """
 File Description:
 Domain: Computational domain (container) with the hole as a subdomain
 Mesh: Fixed mesh
 Method: Immersed boundary
 
-BVP to be solved: du/dt - D $Delta$ u = int $phi$(x)n(x)$delta$(x) d$Gamma$, in $Omega$\
-                  D\nabla u $cdot$ n = 0, on $Gamma$
+BVP to be solved: du/dt - D$Delta$ u = $int$ $phi$(x)n(x)$delta$(x) d$Gamma$, in $Omega$\
+                  D$nabla$ u$cdot$ n = 0, on $Gamma$
 
 """
 
@@ -33,18 +32,18 @@ parameters['reorder_dofs_serial'] = False
 ############################################################################
 x0, y0 = 10, 10 ### computational domain size
 
-center_1 = np.array([-3.5, -3.8]) ### center of the hole domain
+center_1 = np.array([-3.5, -4]) ### center of the hole domain
 radius_1 = 0.5 ### radius of the hole domain
 
-#xy: center_2 = np.array([3.5, 4])
-#xy: radius_2 = 0.5
+center_2 = np.array([3.5, 4])
+radius_2 = 0.5
 
 #### preparation for plotting
 phi = np.arange(0, 2 * np.pi, 0.01)
 
 domain = Rectangle(Point(-x0,-y0),Point(x0,y0))
 hole_1 = Circle(Point(center_1[0],center_1[1]),radius_1)
-#xy: hole_2 = Circle(Point(center_2[0],center_2[1]),radius_2)
+hole_2 = Circle(Point(center_2[0],center_2[1]),radius_2)
 
 resol = 30
 
@@ -53,8 +52,7 @@ resol = 30
 ##### the mesh of the HOLE approach
 ##############################################################################
 ##############################################################################
-#xy: domain_h = domain - hole_1 - hole_2
-domain_h = domain - hole_1
+domain_h = domain - hole_1 - hole_2
 mesh_h = generate_mesh(domain_h, resol) ### the FEM mesh
 subdomains_h = MeshFunction('size_t', mesh_h, mesh_h.topology().dim(), mesh_h.domains()) ### subdomains data
 
@@ -72,7 +70,7 @@ subdomains_h = MeshFunction('size_t', mesh_h, mesh_h.topology().dim(), mesh_h.do
 
 n_norm = FacetNormal(mesh_h) ### outward normal unit vector
 
-V_h = FunctionSpace(mesh_h, "P", 1) ### Lagrange base function is used
+V_h = FunctionSpace(mesh_h, "P", 1) ### Langrage base function is used
 
 meshpoints_h = mesh_h.coordinates() #coordinates of all the mesh, the order is corresponding to the index of vertices
 dx_h = Measure('dx',subdomain_data = subdomains_h)
@@ -96,9 +94,9 @@ class interior_boundaries_1(SubDomain):
         return on_boundary and (x[0]-center_1[0])**2+(x[1]-center_1[1])**2-radius_1**2 <= mesh_h.hmin()/3
 
 
-#xy: class interior_boundaries_2(SubDomain):
-#xy:    def inside(self,x,on_boundary):
-#xy:        return on_boundary and (x[0]-center_2[0])**2+(x[1]-center_2[1])**2-radius_2**2 <= mesh_h.hmin()/3
+class interior_boundaries_2(SubDomain):
+    def inside(self,x,on_boundary):
+        return on_boundary and (x[0]-center_2[0])**2+(x[1]-center_2[1])**2-radius_2**2 <= mesh_h.hmin()/3
 
 
 class exterior_boundaries(SubDomain):
@@ -111,7 +109,7 @@ boundaries_h = MeshFunction('size_t', mesh_h, mesh_h.topology().dim()-1)
 boundaries_h.set_all(0)
 exterior_boundaries().mark(boundaries_h,1)
 interior_boundaries_1().mark(boundaries_h, 2)
-#xy: interior_boundaries_2().mark(boundaries_h, 3)
+interior_boundaries_2().mark(boundaries_h, 3)
 ds_h = Measure('ds', domain = mesh_h, subdomain_data = boundaries_h)
 
 # interior boundary segments coordinates to build up the polygon
@@ -134,7 +132,7 @@ ds_h = Measure('ds', domain = mesh_h, subdomain_data = boundaries_h)
 ##############################################################################
 ##############################################################################
 domain.set_subdomain(1, hole_1)
-#yx: domain.set_subdomain(2, hole_2)
+domain.set_subdomain(2, hole_2)
 
 mesh_ps = generate_mesh(domain, resol) ### the FEM mesh
 subdomains_ps = MeshFunction('size_t',mesh_ps, mesh_ps.topology().dim(), mesh_ps.domains()) ### subdomains data
@@ -148,7 +146,7 @@ plt.yticks(fontsize=20)
 #plt.scatter(center_1[0], center_1[1], color = "blue", s=10)
 #plt.scatter(center_2[0], center_2[1], color = "blue", s=10)
 plt.plot(center_1[0] + radius_1 * np.cos(phi), center_1[1] + radius_1 * np.sin(phi), linewidth=2, color='blue')
-#xy: plt.plot(center_2[0] + radius_2 * np.cos(phi), center_2[1] + radius_2 * np.sin(phi), linewidth=2, color='blue')
+plt.plot(center_2[0] + radius_2 * np.cos(phi), center_2[1] + radius_2 * np.sin(phi), linewidth=2, color='blue')
 plt.show()
 
 ############################################################################
@@ -170,10 +168,10 @@ V_ps = FunctionSpace(mesh_ps, "P", 1) ### Langrage base function is used
 #### edit the mesh to make sure the center is the nodal mesh point
 meshpoints_ps = mesh_ps.coordinates() #coordinates of all the mesh, the order is corresponding to the index of vertices
 center_mesh_index_1 = np.argmin(np.linalg.norm(meshpoints_ps - center_1, axis = 1))
-# center_mesh_index_2 = np.argmin(np.linalg.norm(meshpoints_ps - center_2, axis = 1))
+center_mesh_index_2 = np.argmin(np.linalg.norm(meshpoints_ps - center_2, axis = 1))
 
 mesh_ps.coordinates()[center_mesh_index_1] = center_1
-#xy: mesh_ps.coordinates()[center_mesh_index_2] = center_2
+mesh_ps.coordinates()[center_mesh_index_2] = center_2
 
 print("mesh size h: ", (mesh_ps.hmax()+mesh_ps.hmin())/2)
 ##############################################################################
@@ -187,12 +185,12 @@ print("mesh size h: ", (mesh_ps.hmax()+mesh_ps.hmin())/2)
 
 dx_ps = Measure('dx',subdomain_data = subdomains_ps)
 submesh_hole_1 = SubMesh(mesh_ps, subdomains_ps, 1)
-#xy: submesh_hole_2 = SubMesh(mesh_ps, subdomains_ps, 2)
+submesh_hole_2 = SubMesh(mesh_ps, subdomains_ps, 2)
 
 print("mesh size h: ", (mesh_ps.hmax()+mesh_ps.hmin())/2)
 
 interior_bmeshpoints_1_index = []
-#xy: interior_bmeshpoints_2_index = []
+interior_bmeshpoints_2_index = []
 
 
 submesh_hole_1_vert_index = submesh_hole_1.data().array('parent_vertex_indices', 0)  # the vertices index in submesh corresponding to the global
@@ -205,24 +203,24 @@ for f in edges(submesh_hole_1):
         interior_bmeshpoints_1_index += [submesh_hole_1_vert_index[p1.index()], submesh_hole_1_vert_index[p2.index()]]
 
         
-#xy: submesh_hole_2_vert_index=submesh_hole_2.data().array('parent_vertex_indices', 0)  # the vertices index in submesh corresponding to the global
-#xy: interior_bmeshpoints_2=dict() ### keys are local index
-#xy: for f in edges(submesh_hole_2):
-#xy:    p1=Vertex(submesh_hole_2,f.entities(0)[0])
-#xy:    p2=Vertex(submesh_hole_2,f.entities(0)[1])
-#xy:    if abs((p1.x(0)-center_2[0])**2+(p1.x(1)-center_2[1])**2-radius_2**2)<mesh_ps.hmin()/3 and abs((p2.x(0)-center_2[0])**2+(p2.x(1)-center_2[1])**2-radius_2**2)<mesh_ps.hmin()/3:
-#xy:        interior_bmeshpoints_2[f.index()] = [[p1.x(0), p1.x(1)], [p2.x(0), p2.x(1)], [submesh_hole_2_vert_index[p1.index()], submesh_hole_2_vert_index[p2.index()]]]
-#xy:        interior_bmeshpoints_2_index += [submesh_hole_2_vert_index[p1.index()], submesh_hole_2_vert_index[p2.index()]]
+submesh_hole_2_vert_index=submesh_hole_2.data().array('parent_vertex_indices', 0)  # the vertices index in submesh corresponding to the global
+interior_bmeshpoints_2=dict() ### keys are local index
+for f in edges(submesh_hole_2):
+    p1=Vertex(submesh_hole_2,f.entities(0)[0])
+    p2=Vertex(submesh_hole_2,f.entities(0)[1])
+    if abs((p1.x(0)-center_2[0])**2+(p1.x(1)-center_2[1])**2-radius_2**2)<mesh_ps.hmin()/3 and abs((p2.x(0)-center_2[0])**2+(p2.x(1)-center_2[1])**2-radius_2**2)<mesh_ps.hmin()/3:
+        interior_bmeshpoints_2[f.index()] = [[p1.x(0), p1.x(1)], [p2.x(0), p2.x(1)], [submesh_hole_2_vert_index[p1.index()], submesh_hole_2_vert_index[p2.index()]]]
+        interior_bmeshpoints_2_index += [submesh_hole_2_vert_index[p1.index()], submesh_hole_2_vert_index[p2.index()]]
 
 
 interior_bmeshpoints_1_index = list(set(interior_bmeshpoints_1_index))
-#xy: interior_bmeshpoints_2_index = list(set(interior_bmeshpoints_2_index))
+interior_bmeshpoints_2_index = list(set(interior_bmeshpoints_2_index))
 
 V_vec_ps = VectorFunctionSpace(mesh_ps, "P", 1)
 nh = Function(V_vec_ps)
 nh_array = nh.vector().get_local().reshape((2, -1))
 nh_array[:, interior_bmeshpoints_1_index] = -(meshpoints_ps.T[:, interior_bmeshpoints_1_index] - center_1[:, np.newaxis])/radius_1
-#xy: nh_array[:, interior_bmeshpoints_2_index] = -(meshpoints_ps.T[:, interior_bmeshpoints_2_index] - center_2[:, np.newaxis])/radius_2
+nh_array[:, interior_bmeshpoints_2_index] = -(meshpoints_ps.T[:, interior_bmeshpoints_2_index] - center_2[:, np.newaxis])/radius_2
 nh.vector().set_local(nh_array.flatten())    
     
 
@@ -234,16 +232,16 @@ class interior_boundaries_1(SubDomain):
         return abs((x[0]-center_1[0])**2+(x[1]-center_1[1])**2-radius_1**2) <= mesh_ps.hmin()/3
 
 
-#xy: class interior_boundaries_2(SubDomain):
-#xy:    def inside(self,x,on_boundary):
-#xy:        return abs((x[0]-center_2[0])**2+(x[1]-center_2[1])**2-radius_2**2) <= mesh_ps.hmin()/3
+class interior_boundaries_2(SubDomain):
+    def inside(self,x,on_boundary):
+        return abs((x[0]-center_2[0])**2+(x[1]-center_2[1])**2-radius_2**2) <= mesh_ps.hmin()/3
 
 
 
 boundaries_ps = MeshFunction('size_t', mesh_ps, mesh_ps.topology().dim() - 1)
 boundaries_ps.set_all(0)
 interior_boundaries_1().mark(boundaries_ps, 1)
-#xy: interior_boundaries_2().mark(boundaries_ps, 2)
+interior_boundaries_2().mark(boundaries_ps, 2)
 dS_ps = Measure('dS', domain = mesh_ps, subdomain_data=boundaries_ps)
 
 ##############################################################
@@ -275,7 +273,7 @@ plt.ylabel("y-coordinate", fontsize = 30)
 #plt.scatter(center_1[0], center_1[1], color = "red", s = 20)
 #plt.scatter(center_2[0], center_2[1], color = "red", s = 20)
 plt.plot(center_1[0] + radius_1 * np.cos(phi), center_1[1] + radius_1 * np.sin(phi), linewidth=2.5,color='blue')
-#xy: plt.plot(center_2[0] + radius_2 * np.cos(phi), center_2[1] + radius_2 * np.sin(phi), linewidth=2.5,color='blue')
+plt.plot(center_2[0] + radius_2 * np.cos(phi), center_2[1] + radius_2 * np.sin(phi), linewidth=2.5,color='blue')
 plt.show()
 
   
@@ -292,8 +290,8 @@ w_H1_list = []
 c_star_sqrt_list = []
 c_star_1_list, c_star_2_list, c_star_list = [], [], []
 
-T = 2030 ### final time
-num_steps = 5000 ### number of time steps
+T = 40 ### final time
+num_steps = 1000 ### number of time steps
 dt = T / num_steps ### time step size
 
 D = 0.1 ### diffusion rate
@@ -301,18 +299,11 @@ D = 0.1 ### diffusion rate
 #               degree=2, tol = 0, a = center_1[0], b = center_1[1], c = center_2[0], d = center_2[1], radius_1 = radius_1, radius_2 = radius_2, D_H = 1E8, D_O = D)
 
 ####### Hole = 1, Other + Hole Bound = 0
-#xy: hole_indicator = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)-tol) && (pow(x[0] - c, 2)+pow(x[1] - d, 2)>=pow(radius_2,2)+tol || pow(x[0] - c, 2)+pow(x[1] - d, 2)>=pow(radius_2,2)-tol) ? D_O:D_H', \
-#xy:               degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], c = center_2[0], d = center_2[1], radius_1 = radius_1, radius_2 = radius_2, D_H = 1, D_O = 0)
-hole_indicator = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)-tol) ? D_O:D_H', \
-               degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], radius_1 = radius_1, D_H = 1, D_O = 0)
-
+hole_indicator = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>=pow(radius_1,2)-tol) && (pow(x[0] - c, 2)+pow(x[1] - d, 2)>=pow(radius_2,2)+tol || pow(x[0] - c, 2)+pow(x[1] - d, 2)>=pow(radius_2,2)-tol) ? D_O:D_H', \
+               degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], c = center_2[0], d = center_2[1], radius_1 = radius_1, radius_2 = radius_2, D_H = 1, D_O = 0)
 ###### Hole + Hole Bound = 1, Other = 0
-#xy:
-#xy: hole_indicator_bnd = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)-tol) && (pow(x[0] - c, 2)+pow(x[1] - d, 2)>pow(radius_2,2)+tol || pow(x[0] - c, 2)+pow(x[1] - d, 2)>pow(radius_2,2)-tol) ? D_O:D_H', \
-#xy:              degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], c = center_2[0], d = center_2[1], radius_1 = radius_1, radius_2 = radius_2, D_H = 1, D_O = 0)
-hole_indicator_bnd = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)-tol) ? D_O:D_H', \
-              degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], radius_1 = radius_1, D_H = 1, D_O = 0)
-
+hole_indicator_bnd = Expression('(pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)+tol || pow(x[0] - a, 2)+pow(x[1] - b, 2)>pow(radius_1,2)-tol) && (pow(x[0] - c, 2)+pow(x[1] - d, 2)>pow(radius_2,2)+tol || pow(x[0] - c, 2)+pow(x[1] - d, 2)>pow(radius_2,2)-tol) ? D_O:D_H', \
+               degree=2, tol = mesh_ps.hmin()/3, a = center_1[0], b = center_1[1], c = center_2[0], d = center_2[1], radius_1 = radius_1, radius_2 = radius_2, D_H = 1, D_O = 0)
 
 
 
@@ -327,8 +318,7 @@ u_h_n = interpolate(u_h_0, V_h)
 u_h = TrialFunction(V_h)
 v_h = TestFunction(V_h)
 
-#xy: F_h = u_h * v_h * dx_h + D * dt * dot(grad(u_h), grad(v_h)) * dx_h - dt * P * v_h * (ds_h(2) + ds_h(3)) - u_h_n * v_h * dx_h
-F_h = u_h * v_h * dx_h + D * dt * dot(grad(u_h), grad(v_h)) * dx_h - dt * P * v_h * ds_h(2) - u_h_n * v_h * dx_h
+F_h = u_h * v_h * dx_h + D * dt * dot(grad(u_h), grad(v_h))*dx_h - dt * P * v_h * (ds_h(2) + ds_h(3)) - u_h_n * v_h * dx_h
 a_h, L_h = lhs(F_h), rhs(F_h)
 
 ### dirac delta approach
@@ -370,8 +360,7 @@ v_ps = TestFunction(V_ps)
 
 
 #### derive the expression of the source term only considering the centre
-#xy: ps = [(Point(center_1[0], center_1[1]), dt * P * np.pi * radius_1 * 2), (Point(center_2[0], center_2[1]), dt * P * np.pi * radius_2 * 2)]
-ps = [(Point(center_1[0], center_1[1]), dt * P * np.pi * radius_1 * 2)]
+ps = [(Point(center_1[0], center_1[1]), dt * P * np.pi * radius_1 * 2), (Point(center_2[0], center_2[1]), dt * P * np.pi * radius_2 * 2)]
 ps = PointSource(V_ps, ps)
 
 
@@ -394,7 +383,7 @@ for n in range(num_steps):
 #        w_L2_list += [sqrt(assemble(inner(w, w)*dx_h))]
 #        w_L2_sq_list += [assemble(inner(w, w)*dx_h)]
 #        w_H1_list += [sqrt(assemble((inner(w, w) + inner(grad(w), grad(w)))*dx_h))]
-
+    
     t += dt
     
     # Compute solution
@@ -403,8 +392,8 @@ for n in range(num_steps):
     A_ps, b_ps = assemble_system(a_ps, L_ps)
     ps.apply(b_ps)
     
-# Compute solution
-#   solve(a == L, u)
+    # Compute solution
+#    solve(a == L, u)
     solve(A_ps, u_ps.vector(), b_ps)
     
     # Update previous solution
@@ -422,18 +411,18 @@ for n in range(num_steps):
     w = project((u_h - u_ps_ad), V_h)
     print(sqrt(assemble(inner(w, w)*dx_h)))
     
-# Save to file and plot solution
+    # Save to file and plot solution
 #    vtkfile << (u, t)
 #    plt.clf()
 #    plt.ion()
 #
 #    fig = plot(u)
 #    plt.title(n)
-#    plot(mesh)
+##    plot(mesh)
 #    plt.plot(center_1[0] + radius_1 * np.cos(phi), center_1[1] + radius_1 * np.sin(phi), linewidth=1,color='blue')
 #    plt.plot(center_2[0] + radius_2 * np.cos(phi), center_2[1] + radius_2 * np.sin(phi), linewidth=1,color='blue')
 #    fig_cb = plt.colorbar(fig)
-#    fig_cb.set_clim(vmin = 0,vmax = 1)
+##    fig_cb.set_clim(vmin = 0,vmax = 1)
 #    
 #    plt.pause(0.001)
 #    plt.show()
@@ -458,17 +447,19 @@ for n in range(num_steps):
     w_L2_list += [sqrt(assemble(inner(w, w)*dx_h))]
     w_H1_list += [sqrt(assemble((inner(w, w) + inner(grad(w), grad(w)))*dx_h))]
 
-    print("||u_h||_{L2}: ", sqrt(assemble(inner(u_h, u_h)*dx_h)))
+    print("||u_h||_{L2}: ", norm(u_h, 'l2'), sqrt(assemble(inner(u_h, u_h)*dx_h)))
     print("||u_ps||_{L2}: ", sqrt(assemble(inner(u_ps, u_ps)*dx_ps(0))))
     print(u_ps_ad(0.5, 0.0), u_ps(0.5, 0.0))
     print("||w||_{L2}: ", sqrt(assemble(inner(w, w)*dx_h)))
-    print("||u_h||_{L2} - ||u_ps||_{L2}:", abs(norm(u_h, 'l2') - norm(u_ps_ad, 'l2')))
-    print("||u_h||_{L2} - ||u_ps||_{L2}:", abs(norm(u_h, 'l2') - sqrt(assemble(inner(u_ps, u_ps)*dx_ps(0)))))
+    print("|||u_h||_{L2} - ||u_ps||_{L2}:", abs(norm(u_h, 'l2') - norm(u_ps_ad, 'l2')))
+    print("|||u_h||_{L2} - ||u_ps||_{L2}:", abs(norm(u_h, 'l2') - sqrt(assemble(inner(u_ps, u_ps)*dx_ps(0)))))
     print("||w||_{H1}: ", sqrt(assemble((inner(w, w) + inner(grad(w), grad(w)))*dx_h)))
     print("c_star_sqrt:", c_star_sqrt_list[-1])
     print("c_star:", c_star_list[-1])
+    
 
-
+    
+    
 
 t_list = np.linspace(0, T, num_steps+1)
 

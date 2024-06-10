@@ -32,13 +32,13 @@ model_rank = 0
 
 
 #Physical Constants
-D = 10
+D = 0.1
 a = 1
 b = 1
 c = 2
 t = 0  
-T = 200.0
-num_steps = 5000
+T = 400.0
+num_steps = 10000
 dt = T / num_steps
 
 #Define the Petri dish and the cells
@@ -160,7 +160,7 @@ if mesh_comm.rank == model_rank:
 
 domain_point_source, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V_p = functionspace(domain_point_source, ("Lagrange", 1))
-
+"""
 topology, cell_types, geometry = plot.vtk_mesh(V_p)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
@@ -172,7 +172,7 @@ if not pyvista.OFF_SCREEN:
     plotter.screenshot("point_source" + str(a) + "_mesh.png")
 else:
     figure = plotter.screenshot("point_source_mesh.png")
-
+"""
 
 #Initial condition
 def initial_condition(x, disp=1, cct=c):
@@ -398,21 +398,21 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
-
-grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
+"""
+grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
 plotter = pyvista.Plotter()
 plotter.open_gif("difference.gif", fps=10)
-grid.point_data["w"] = w.x.array
-warped = grid.warp_by_scalar("w", factor=5)
+grid.point_data["u_p"] = u_p.x.array
+warped = grid.warp_by_scalar("u_p", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
 renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 0.2])
+                            clim=[0, 2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-
+"""
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
     t_e = np.zeros(num_steps, dtype=np.float64)
@@ -444,25 +444,25 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("w", factor=5)
-    warped.points[:, :] = new_warped.points
-    warped.point_data["w"][:] = w.x.array
-    plotter.write_frame()
+    #new_warped = grid.warp_by_scalar("u_p", factor=1)
+    #warped.points[:, :] = new_warped.points
+    #warped.point_data["u_p"][:] = u_p.x.array
+    #plotter.write_frame()
     eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
     sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM)
     qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
     print(i+1, np.sqrt(eL2_local), np.sqrt(sL2_local), np.sqrt(qL2_local))
-    e_w[i] = qL2_local
+    e_w[i] = qL2_local/eL2_local
     i += 1
 
        
 fig = plt.figure(figsize=(35, 10))
-l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=4)
+l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
 plt.title("L_2")
 plt.grid()
 plt.legend()
 #plt.show()
-plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) +".png")
+plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
 
 
 #os.remove("spactial_exclusion_try.gif")
