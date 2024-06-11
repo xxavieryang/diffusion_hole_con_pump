@@ -10,7 +10,6 @@ Comparison 1 1 0 1 40 1000 steps png
 Comparison 1 1 0 10 40 1000 steps png
 Comparison 1 1 0 0.1 40 1000 steps png
 
-Absorb:
 Comparison 1 1 2 1 40 1000 steps png
 Comparison 1 1 2 10 40 1000 steps png
 Comparison 1 1 2 0.1 40 1000 steps png
