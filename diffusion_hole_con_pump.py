@@ -32,13 +32,13 @@ model_rank = 0
 
 
 #Physical Constants
-D = 0.1
+D = 1
 a = 1
 b = 1
-c = 2
+c = 0
 t = 0  
-T = 400.0
-num_steps = 10000
+T = 10.0
+num_steps = 500
 dt = T / num_steps
 
 #Define the Petri dish and the cells
@@ -113,18 +113,18 @@ V_s = functionspace(domain_spatial_exclusion, ("Lagrange", 1))
 print(pyvista.global_theme.jupyter_backend)
 
 from dolfinx import plot
-
-#topology, cell_types, geometry = plot.vtk_mesh(V_s)
-#grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-#plotter = pyvista.Plotter()
-#plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
-#plotter.view_xy()
-#if not pyvista.OFF_SCREEN:
-    #plotter.show()
-    #figure = plotter.screenshot("spatial_exclusion_mesh.png")
-#else:
-    #figure = plotter.screenshot("patial_exclusion_mesh.png")
-
+"""
+topology, cell_types, geometry = plot.vtk_mesh(V_s)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+    figure = plotter.screenshot("spatial_exclusion_mesh_1.png")
+else:
+    figure = plotter.screenshot("patial_exclusion_mesh_1.png")
+"""
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=2)
 	gmsh.model.occ.synchronize()
@@ -176,7 +176,7 @@ else:
 
 #Initial condition
 def initial_condition(x, disp=1, cct=c):
-    return x[0] * 0 + cct
+    return np.sin((x[0]+x[1]/3+2)) + 1
 
 #Spatial exclusion model
 
@@ -398,21 +398,21 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
-"""
+
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
 plotter = pyvista.Plotter()
-plotter.open_gif("difference.gif", fps=10)
+plotter.open_gif("Comparison.gif", fps=10)
 grid.point_data["u_p"] = u_p.x.array
 warped = grid.warp_by_scalar("u_p", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
                             clim=[0, 2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-"""
+
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
     t_e = np.zeros(num_steps, dtype=np.float64)
@@ -444,10 +444,10 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    #new_warped = grid.warp_by_scalar("u_p", factor=1)
-    #warped.points[:, :] = new_warped.points
-    #warped.point_data["u_p"][:] = u_p.x.array
-    #plotter.write_frame()
+    new_warped = grid.warp_by_scalar("u_p", factor=1)
+    warped.points[:, :] = new_warped.points
+    warped.point_data["u_p"][:] = u_p.x.array
+    plotter.write_frame()
     eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
     sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM)
     qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
@@ -456,15 +456,15 @@ for i in range(num_steps):
     i += 1
 
        
-fig = plt.figure(figsize=(35, 10))
-l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
-plt.title("L_2")
-plt.grid()
-plt.legend()
+#fig = plt.figure(figsize=(35, 10))
+#l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
+#plt.title("L_2")
+#plt.grid()
+#plt.legend()
 #plt.show()
-plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
+#plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
 
 
 #os.remove("spactial_exclusion_try.gif")
-#plotter.close()
+plotter.close()
 #xdmf.close()

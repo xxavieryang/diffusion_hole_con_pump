@@ -1,10 +1,3 @@
-No reaction:
-Comparison 0 1 0 1 200s 5000 steps relative png
-Comparison 0 1 0 10 200s 5000 steps relative png
-Comparison 0 1 0 0.1 200s 5000 steps relative png
-Comparison 0 1 0 0.1 400s 10000 steps relative png
-Comparison 0 1 0 0.1 800s 20000 steps relative png
-
 Secrete:
 Comparison 1 1 0 1 40 1000 steps png
 Comparison 1 1 0 10 40 1000 steps png
@@ -18,10 +11,5 @@ Stable:
 Comparison 1 1 1 1 40 1000 steps png
 Comparison 1 1 1 10 40 1000 steps png
 Comparison 1 1 1 0.1 40 1000 steps png
-
-Comparison Gauss 10s 500 steps gif
-Comparison sin 10s 500 steps gif
-Comparison stable 10s 500 steps gif
-Comparison secrete 10s 500 steps gif
 
 Two or more cells
