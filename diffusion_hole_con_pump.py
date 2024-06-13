@@ -37,8 +37,8 @@ a = 1
 b = 1
 c = 0
 t = 0  
-T = 10.0
-num_steps = 500
+T = 200.0
+num_steps = 5000
 dt = T / num_steps
 
 #Define the Petri dish and the cells
@@ -176,7 +176,7 @@ else:
 
 #Initial condition
 def initial_condition(x, disp=1, cct=c):
-    return np.sin((x[0]+x[1]/3+2)) + 1
+    return x[0]*0 + cct
 
 #Spatial exclusion model
 
@@ -211,7 +211,7 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s #+ dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
 L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
 
 
@@ -385,7 +385,7 @@ Q1_p.setUp()
 Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
-A_p.axpy(1, A1_p)
+#A_p.axpy(1, A1_p)
 
 
 solver_p = PETSc.KSP().create(domain_point_source.comm)
@@ -398,7 +398,7 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
-
+"""
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
 plotter = pyvista.Plotter()
 plotter.open_gif("Comparison.gif", fps=10)
@@ -412,13 +412,14 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             clim=[0, 2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-
+"""
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
     t_e = np.zeros(num_steps, dtype=np.float64)
     i = 0
 
 print(a, b, c, D)
+a = 0
 
 for i in range(num_steps):
     t += dt
@@ -444,27 +445,27 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("u_p", factor=1)
-    warped.points[:, :] = new_warped.points
-    warped.point_data["u_p"][:] = u_p.x.array
-    plotter.write_frame()
-    eL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM)
-    sL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM)
-    qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM)
-    print(i+1, np.sqrt(eL2_local), np.sqrt(sL2_local), np.sqrt(qL2_local))
+    #new_warped = grid.warp_by_scalar("u_p", factor=1)
+    #warped.points[:, :] = new_warped.points
+    #warped.point_data["u_p"][:] = u_p.x.array
+    #plotter.write_frame()
+    eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
+    sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
+    qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
+    print(i+1, eL2_local, sL2_local, qL2_local)
     e_w[i] = qL2_local/eL2_local
     i += 1
 
        
-#fig = plt.figure(figsize=(35, 10))
-#l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
-#plt.title("L_2")
-#plt.grid()
-#plt.legend()
+fig = plt.figure(figsize=(35, 10))
+l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
+plt.title("L_2")
+plt.grid()
+plt.legend()
 #plt.show()
-#plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
+plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
 
 
 #os.remove("spactial_exclusion_try.gif")
-plotter.close()
+#plotter.close()
 #xdmf.close()
