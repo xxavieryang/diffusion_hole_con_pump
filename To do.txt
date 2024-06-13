@@ -11,4 +11,6 @@ Comparison 1 1 1 1 40 1000 steps png
 Comparison 1 1 1 10 40 1000 steps png
 Comparison 1 1 1 0.1 40 1000 steps png
 
+one cell 0.042
+
 Two or more cells

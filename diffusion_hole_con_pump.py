@@ -32,9 +32,9 @@ model_rank = 0
 
 
 #Physical Constants
-D = 1
+D = 0.1
 a = 1
-b = 1
+b = 10
 c = 0
 t = 0  
 T = 200.0
@@ -45,14 +45,14 @@ dt = T / num_steps
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
 	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	#cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
@@ -113,6 +113,7 @@ V_s = functionspace(domain_spatial_exclusion, ("Lagrange", 1))
 print(pyvista.global_theme.jupyter_backend)
 
 from dolfinx import plot
+
 """
 topology, cell_types, geometry = plot.vtk_mesh(V_s)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
@@ -121,10 +122,12 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
-    figure = plotter.screenshot("spatial_exclusion_mesh_1.png")
+    #figure = plotter.screenshot("spatial_exclusion_mesh_1.png")
 else:
     figure = plotter.screenshot("patial_exclusion_mesh_1.png")
 """
+
+
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=2)
 	gmsh.model.occ.synchronize()
@@ -138,10 +141,10 @@ if mesh_comm.rank == model_rank:
 #Add the hole back
 if  mesh_comm.rank == model_rank:
 	cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	#cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
-	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
+	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
 	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
 	gmsh.model.occ.synchronize()
 
@@ -160,6 +163,8 @@ if mesh_comm.rank == model_rank:
 
 domain_point_source, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V_p = functionspace(domain_point_source, ("Lagrange", 1))
+
+
 """
 topology, cell_types, geometry = plot.vtk_mesh(V_p)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
@@ -169,10 +174,11 @@ plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
 if not pyvista.OFF_SCREEN:
     plotter.show()
-    plotter.screenshot("point_source" + str(a) + "_mesh.png")
+    #plotter.screenshot("point_source_mesh_2.png")
 else:
-    figure = plotter.screenshot("point_source_mesh.png")
+    figure = plotter.screenshot("point_source_mesh_2.png")
 """
+
 
 #Initial condition
 def initial_condition(x, disp=1, cct=c):
@@ -211,8 +217,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s #+ dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
-L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) + dt * a * u_s * v_s * ds_s(2)
+L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) + dt * b * v_s * ds_s(2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -281,14 +287,26 @@ for i in range(num_steps):
 def diracd1(x):
     return np.exp(-((x[0]-c1_x)**2+(x[1]-c1_y)**2)/0.02)/(0.02*np.pi)
 
-def xi(x):
+def diracd2(x):
+    return np.exp(-((x[0]-c2_x)**2+(x[1]-c2_y)**2)/0.02)/(0.02*np.pi)
+
+def xi1(x):
     return (x[0]-c1_x)**2+(x[1]-c1_y)**2<=r1**2
 
-def xx(x):
+def xi2(x):
+    return (x[0]-c2_x)**2+(x[1]-c2_y)**2<=r2**2
+
+def xx1(x):
     return (x[0]-c1_x)**2/2
 
-def yy(x):
+def yy1(x):
     return (x[1]-c1_y)**2/2
+
+def xx2(x):
+    return (x[0]-c2_x)**2/2
+
+def yy2(x):
+    return (x[1]-c2_y)**2/2
 
 #boundary_locator = [(0, lambda x: np.isclose(x[0],0) | np.isclose(x[0],L) | np.isclose(x[1],0) | np.isclose(x[1],W)),
 #              (1, lambda x: np.isclose((x[0]-c1_x)**2+(x[1]-c1_y)**2,r1**2)),
@@ -311,10 +329,10 @@ def yy(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.042
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0088
 
 def cell2_subdomain(x):
-    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.042
+    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.0097
 
 
 subdomain_locator = [(1, cell1_subdomain),
@@ -342,34 +360,48 @@ u_pn = Function(V_p)
 u_pn.interpolate(initial_condition)
 delta1 = Function(V_p)
 delta1.interpolate(diracd1)
-fxi = Function(V_p)
-fxi.interpolate(xi)
-fxx = Function(V_p)
-fxx.interpolate(xx)
-fyy = Function(V_p)
-fyy.interpolate(yy)
+delta2 = Function(V_p)
+delta2.interpolate(diracd2)
+fxx1 = Function(V_p)
+fxx1.interpolate(xx1)
+fyy1 = Function(V_p)
+fyy1.interpolate(yy1)
+fxx2 = Function(V_p)
+fxx2.interpolate(xx2)
+fyy2 = Function(V_p)
+fyy2.interpolate(yy2)
 
 
 a_p = u_p * v_p * dx_p + dt * D * dot(grad(u_p), grad(v_p)) * dx_p
-L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p
+L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p + 2 * np.pi * r2 * b * dt * delta2 * v_p * dx_p
 linearform_p = form (L_p)
 
 A_p = assemble_matrix(form(a_p))
 A_p.assemble()
 b_p = create_vector(form(L_p))
 
-pL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(delta1 * dx_p)), op=MPI.SUM)
-qL2_local = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
-print(pL2_local)
-print(qL2_local)
+deappr = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(delta2 * dx_p)), op=MPI.SUM)
+area1 = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
+area2 = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
 
-t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy),grad(u_p)) * dx_p(1) 
-#t1_p = 2 * dt * a * fxi * u_p * dx_p #+ dt * a * fxi * dot(grad(fxx),grad(u_p)) * dx_p + dt * a * fxi * dot(grad(fyy),grad(u_p)) * dx_p 
+print(deappr)
+print(area1, area2, np.pi*r1*r1)
+
+t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1) 
 q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
 qq1_p = create_vector(form(q1_p))
 assemble_vector(tt1_p, form(t1_p))
 assemble_vector(qq1_p, form(q1_p))
+
+
+t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
+q2_p = delta2 * v_p * dx_p
+tt2_p = create_vector(form(t2_p))
+qq2_p = create_vector(form(q2_p))
+assemble_vector(tt2_p, form(t2_p))
+assemble_vector(qq2_p, form(q2_p))
+
 
 
 T1_p = PETSc.Mat().create()
@@ -385,7 +417,23 @@ Q1_p.setUp()
 Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
-#A_p.axpy(1, A1_p)
+A_p.axpy(1, A1_p)
+
+
+T2_p = PETSc.Mat().create()
+T2_p.setSizes([tt2_p.getSize(), 1])
+T2_p.setFromOptions()
+T2_p.setUp()
+T2_p.setValues(range(tt2_p.getSize()),0,tt2_p)
+T2_p.assemble()
+Q2_p = PETSc.Mat().create()
+Q2_p.setSizes([qq2_p.getSize(), 1])
+Q2_p.setFromOptions()
+Q2_p.setUp()
+Q2_p.setValues(range(qq2_p.getSize()),0,qq2_p)
+Q2_p.assemble()
+A2_p = Q2_p.matTransposeMult(T2_p)
+A_p.axpy(1, A2_p)
 
 
 solver_p = PETSc.KSP().create(domain_point_source.comm)
@@ -398,21 +446,20 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
-"""
-grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_p))
+grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("Comparison.gif", fps=10)
-grid.point_data["u_p"] = u_p.x.array
-warped = grid.warp_by_scalar("u_p", factor=1)
+grid.point_data["w"] = w.x.array
+warped = grid.warp_by_scalar("w", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
 renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 2])
+                            clim=[0, 0.2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-"""
+
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
     t_e = np.zeros(num_steps, dtype=np.float64)
@@ -445,10 +492,10 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    #new_warped = grid.warp_by_scalar("u_p", factor=1)
-    #warped.points[:, :] = new_warped.points
-    #warped.point_data["u_p"][:] = u_p.x.array
-    #plotter.write_frame()
+    new_warped = grid.warp_by_scalar("w", factor=1)
+    warped.points[:, :] = new_warped.points
+    warped.point_data["w"][:] = w.x.array
+    plotter.write_frame()
     eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
     sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
