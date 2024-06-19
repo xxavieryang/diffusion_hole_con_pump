@@ -32,10 +32,10 @@ model_rank = 0
 
 
 #Physical Constants
-D = 0.1
+D = 10
 a = 1
-b = 10
-c = 0
+b = 1
+c = 1
 t = 0  
 T = 200.0
 num_steps = 5000
@@ -45,14 +45,14 @@ dt = T / num_steps
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
 	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	#cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
 	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
 
@@ -141,10 +141,10 @@ if mesh_comm.rank == model_rank:
 #Add the hole back
 if  mesh_comm.rank == model_rank:
 	cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+	#cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
 	#cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
-	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
+	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
 	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
 	gmsh.model.occ.synchronize()
 
@@ -217,8 +217,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) + dt * a * u_s * v_s * ds_s(2)
-L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) + dt * b * v_s * ds_s(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
+L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -329,10 +329,10 @@ def yy2(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0088
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.042 #+ 0.0088
 
 def cell2_subdomain(x):
-    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.0097
+    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 #+ 0.0097
 
 
 subdomain_locator = [(1, cell1_subdomain),
@@ -373,7 +373,7 @@ fyy2.interpolate(yy2)
 
 
 a_p = u_p * v_p * dx_p + dt * D * dot(grad(u_p), grad(v_p)) * dx_p
-L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p + 2 * np.pi * r2 * b * dt * delta2 * v_p * dx_p
+L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p #+ 2 * np.pi * r2 * b * dt * delta2 * v_p * dx_p
 linearform_p = form (L_p)
 
 A_p = assemble_matrix(form(a_p))
@@ -395,15 +395,6 @@ assemble_vector(tt1_p, form(t1_p))
 assemble_vector(qq1_p, form(q1_p))
 
 
-t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
-q2_p = delta2 * v_p * dx_p
-tt2_p = create_vector(form(t2_p))
-qq2_p = create_vector(form(q2_p))
-assemble_vector(tt2_p, form(t2_p))
-assemble_vector(qq2_p, form(q2_p))
-
-
-
 T1_p = PETSc.Mat().create()
 T1_p.setSizes([tt1_p.getSize(), 1])
 T1_p.setFromOptions()
@@ -420,6 +411,14 @@ A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
 
 
+"""
+t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
+q2_p = delta2 * v_p * dx_p
+tt2_p = create_vector(form(t2_p))
+qq2_p = create_vector(form(q2_p))
+assemble_vector(tt2_p, form(t2_p))
+assemble_vector(qq2_p, form(q2_p))
+
 T2_p = PETSc.Mat().create()
 T2_p.setSizes([tt2_p.getSize(), 1])
 T2_p.setFromOptions()
@@ -434,7 +433,7 @@ Q2_p.setValues(range(qq2_p.getSize()),0,qq2_p)
 Q2_p.assemble()
 A2_p = Q2_p.matTransposeMult(T2_p)
 A_p.axpy(1, A2_p)
-
+"""
 
 solver_p = PETSc.KSP().create(domain_point_source.comm)
 solver_p.setOperators(A_p)
@@ -446,6 +445,7 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
+"""
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("Comparison.gif", fps=10)
@@ -459,6 +459,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             clim=[0, 0.2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
+"""
 
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
@@ -466,7 +467,7 @@ if domain_spatial_exclusion.comm.rank == 0:
     i = 0
 
 print(a, b, c, D)
-a = 0
+
 
 for i in range(num_steps):
     t += dt
@@ -492,15 +493,15 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("w", factor=1)
-    warped.points[:, :] = new_warped.points
-    warped.point_data["w"][:] = w.x.array
-    plotter.write_frame()
+    #new_warped = grid.warp_by_scalar("w", factor=1)
+    #warped.points[:, :] = new_warped.points
+    #warped.point_data["w"][:] = w.x.array
+    #plotter.write_frame()
     eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
     sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
     print(i+1, eL2_local, sL2_local, qL2_local)
-    e_w[i] = qL2_local/eL2_local
+    e_w[i] = qL2_local
     i += 1
 
        
