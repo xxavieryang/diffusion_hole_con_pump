@@ -16,7 +16,6 @@ import point_source as ps
 
 
 #Create the computation domain and geometric constant
-gmsh.initialize()
 
 L = W = 10
 r1 = 0.25
@@ -41,6 +40,8 @@ T = 200.0
 num_steps = 5000
 dt = T / num_steps
 
+gmsh.initialize()
+
 #Define the Petri dish and the cells
 if mesh_comm.rank == model_rank:
 	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
@@ -55,7 +56,6 @@ if  mesh_comm.rank == model_rank:
 	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
 	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
 	gmsh.model.occ.synchronize()
-
 
 #Spatial exclusion mesh with more refined meshing around the cells
 liquid_marker_s = 1
@@ -114,7 +114,6 @@ print(pyvista.global_theme.jupyter_backend)
 
 from dolfinx import plot
 
-"""
 topology, cell_types, geometry = plot.vtk_mesh(V_s)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
@@ -125,12 +124,7 @@ if not pyvista.OFF_SCREEN:
     #figure = plotter.screenshot("spatial_exclusion_mesh_1.png")
 else:
     figure = plotter.screenshot("patial_exclusion_mesh_1.png")
-"""
 
-
-if  mesh_comm.rank == model_rank:
-	gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=2)
-	gmsh.model.occ.synchronize()
 
 if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.generate(gdim)
@@ -152,7 +146,7 @@ liquid_marker_p = 4
 if mesh_comm.rank == model_rank:
 	volume_p = gmsh.model.getEntities(dim=gdim)
 	print(len(volume_p))
-	assert(len(volume_p) == 2)
+	assert(len(volume_p) == 1)
 	gmsh.model.addPhysicalGroup(volume_p[0][0],[volume_p[0][1]],liquid_marker_p)
 	gmsh.model.setPhysicalName(volume_p[0][0],liquid_marker_p,"Liquid_p")
 
@@ -165,7 +159,6 @@ domain_point_source, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.mod
 V_p = functionspace(domain_point_source, ("Lagrange", 1))
 
 
-"""
 topology, cell_types, geometry = plot.vtk_mesh(V_p)
 grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
@@ -177,7 +170,6 @@ if not pyvista.OFF_SCREEN:
     #plotter.screenshot("point_source_mesh_2.png")
 else:
     figure = plotter.screenshot("point_source_mesh_2.png")
-"""
 
 
 #Initial condition
@@ -329,7 +321,7 @@ def yy2(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.042 #+ 0.0088
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0091 #+ 0.0088
 
 def cell2_subdomain(x):
     return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 #+ 0.0097
@@ -346,7 +338,7 @@ for (marker, locator) in subdomain_locator:
 facet_indices2 = np.hstack(facet_indices2).astype(np.int32)
 facet_markers2 = np.hstack(facet_markers2).astype(np.int32)
 sorted_facets2 = np.argsort(facet_indices2)
-facet_tag2 = mesh.meshtags(domain_spatial_exclusion, gdim, facet_indices2[sorted_facets2], facet_markers2[sorted_facets2])
+facet_tag2 = mesh.meshtags(domain_point_source, gdim, facet_indices2[sorted_facets2], facet_markers2[sorted_facets2])
 
 dx_p = Measure("dx", domain=domain_point_source, subdomain_data=facet_tag2)
 
@@ -380,11 +372,9 @@ A_p = assemble_matrix(form(a_p))
 A_p.assemble()
 b_p = create_vector(form(L_p))
 
-deappr = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(delta2 * dx_p)), op=MPI.SUM)
-area1 = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
-area2 = domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
+area1 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
+area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
 
-print(deappr)
 print(area1, area2, np.pi*r1*r1)
 
 t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1) 
@@ -445,7 +435,7 @@ u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
 
-"""
+
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("Comparison.gif", fps=10)
@@ -459,7 +449,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
                             clim=[0, 0.2])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-"""
+
 
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
@@ -493,10 +483,10 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    #new_warped = grid.warp_by_scalar("w", factor=1)
-    #warped.points[:, :] = new_warped.points
-    #warped.point_data["w"][:] = w.x.array
-    #plotter.write_frame()
+    new_warped = grid.warp_by_scalar("w", factor=1)
+    warped.points[:, :] = new_warped.points
+    warped.point_data["w"][:] = w.x.array
+    plotter.write_frame()
     eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
     sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
