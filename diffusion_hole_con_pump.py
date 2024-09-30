@@ -11,7 +11,6 @@ from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
 	             div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
 import pyvista
 
-import point_source as ps
 #import point_source as ps
 
 
@@ -31,13 +30,13 @@ model_rank = 0
 
 
 #Physical Constants
-D = 10
-a = 1
+D = 0.1
+a = 0
 b = 1
-c = 1
+c = 0
 t = 0  
-T = 200.0
-num_steps = 5000
+T = 20.0
+num_steps = 500
 dt = T / num_steps
 
 gmsh.initialize()
@@ -119,18 +118,16 @@ grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
 plotter = pyvista.Plotter()
 plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
-if not pyvista.OFF_SCREEN:
-    plotter.show()
+#if not pyvista.OFF_SCREEN:
+    #plotter.show()
     #figure = plotter.screenshot("spatial_exclusion_mesh_1.png")
-else:
-    figure = plotter.screenshot("patial_exclusion_mesh_1.png")
-
+#else:
+    #figure = plotter.screenshot("patial_exclusion_mesh_1.png")
 
 if mesh_comm.rank == model_rank:
 	gmsh.model.mesh.generate(gdim)
 	gmsh.model.mesh.setOrder(1)
 	gmsh.model.mesh.optimize("Netgen")
-
 
 #Add the hole back
 if  mesh_comm.rank == model_rank:
@@ -165,11 +162,11 @@ plotter = pyvista.Plotter()
 
 plotter.add_mesh(grid, color = [1.0,1.0,1.0], show_edges = True)
 plotter.view_xy()
-if not pyvista.OFF_SCREEN:
-    plotter.show()
+#if not pyvista.OFF_SCREEN:
+    #plotter.show()
     #plotter.screenshot("point_source_mesh_2.png")
-else:
-    figure = plotter.screenshot("point_source_mesh_2.png")
+#else:
+    #figure = plotter.screenshot("point_source_mesh_2.png")
 
 
 #Initial condition
@@ -376,7 +373,7 @@ area1 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))
 area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
 
 print(area1, area2, np.pi*r1*r1)
-
+'''
 t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1) 
 q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
@@ -399,7 +396,7 @@ Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
-
+'''
 
 """
 t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
@@ -434,22 +431,21 @@ u_s = Function(V_s)
 u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
-
-
+"""
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
 plotter.open_gif("Comparison.gif", fps=10)
-grid.point_data["w"] = w.x.array
-warped = grid.warp_by_scalar("w", factor=1)
+grid.point_data["u_s"] = u_s.x.array
+warped = grid.warp_by_scalar("u_s", factor=1)
 viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 0.2])
+                            clim=[0, 0.1])
 #xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
 #xdmf.write_mesh(domain_point_source)
-
+"""
 
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
@@ -483,26 +479,31 @@ for i in range(num_steps):
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("w", factor=1)
-    warped.points[:, :] = new_warped.points
-    warped.point_data["w"][:] = w.x.array
-    plotter.write_frame()
+    #new_warped = grid.warp_by_scalar("u_s", factor=1)
+    #warped.points[:, :] = new_warped.points
+    #warped.point_data["u_s"][:] = u_s.x.array
+    #plotter.write_frame()
     eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
     sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
     print(i+1, eL2_local, sL2_local, qL2_local)
-    e_w[i] = qL2_local
+    e_w[i] = qL2_local/eL2_local
     i += 1
 
-       
-fig = plt.figure(figsize=(35, 10))
+np.savetxt('t_e.csv', t_e, delimiter=',')
+np.savetxt('e_w01.csv', e_w, delimiter=',')
+
+"""    
+fig = plt.figure(figsize=(15, 10))
+plt.rcParams.update({'font.size': 22})
 l1 = plt.plot(t_e, e_w, label="L2-error", linewidth=3)
-plt.title("L_2")
+l2 = plt.plot(t_e, f_w, label="L2-error", linewidth=3)
+plt.title("L2")
 plt.grid()
 plt.legend()
 #plt.show()
 plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) + "_" + str(T) + "_" + str(num_steps) +".png")
-
+"""
 
 #os.remove("spactial_exclusion_try.gif")
 #plotter.close()

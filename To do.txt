@@ -1,3 +1,2 @@
-One cell 0.042
-
-Two cells 0.0088 0.0097
+Run for a=1 b=0 c=2 D=0.1,1,10 (matrix operation back) absorb
+Run for a=1 b=1 c=0 D=0.1,1,10 Emissionwithconsumption
