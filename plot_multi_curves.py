@@ -1,37 +1,28 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Read data from two CSV files
-data1 = pd.read_csv('data1.csv')  # Replace with your first CSV filename
-data2 = pd.read_csv('data2.csv')  # Replace with your second CSV filename
+data1 = pd.read_csv('t_e.csv')
+data2 = pd.read_csv('e_w1.csv')
+#data22 = pd.read_csv('s_w1.csv')
+data3 = pd.read_csv('e_w10.csv')
+data4 = pd.read_csv('e_w01.csv')
 
-# Assuming each CSV has 'x' and 'y' columns
-# Adjust the column names based on your CSV structure
-x1 = data1['x']
-y1 = data1['y']
+x1 = data1
+y1 = data2
+#y11 = data22
+y10 = data3
+y01 = data4
 
-x2 = data2['x']
-y2 = data2['y']
-
-# Create a plot
-plt.figure(figsize=(10, 5))
-
-# Plot data from the first CSV
-plt.plot(x1, y1, label='Data from CSV 1', color='blue', marker='o')
-
-# Plot data from the second CSV
-plt.plot(x2, y2, label='Data from CSV 2', color='orange', marker='x')
-
-# Add labels and title
-plt.xlabel('X-axis Label')  # Replace with your X-axis label
-plt.ylabel('Y-axis Label')  # Replace with your Y-axis label
-plt.title('Comparison of Two CSV Data')
-
-# Add a legend
+plt.figure(figsize=(15, 10))
+plt.rcParams.update({'font.size': 22})
+#plt.ylim(9, 11.1)
+plt.plot(x1, y1, label='D=1',linewidth=3)
+#plt.plot(x1, y11, label='Point source',linewidth=3)
+plt.plot(x1, y10, label='D=10',linewidth=3)
+plt.plot(x1, y01, label='D=0.1',linewidth=3)
+plt.title("Relative L2 error")
+plt.xlabel('time') 
 plt.legend()
-
-# Show grid
 plt.grid()
-
-# Show the plot
-plt.show()
+#plt.show()
+plt.savefig("noconsumption.png")

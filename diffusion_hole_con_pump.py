@@ -373,7 +373,8 @@ area1 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))
 area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
 
 print(area1, area2, np.pi*r1*r1)
-'''
+
+"""
 t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1) 
 q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
@@ -396,7 +397,7 @@ Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
-'''
+"""
 
 """
 t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
@@ -449,6 +450,7 @@ renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
 
 if domain_spatial_exclusion.comm.rank == 0:
     e_w = np.zeros(num_steps, dtype=np.float64)
+    #s_w = np.zeros(num_steps, dtype=np.float64)
     t_e = np.zeros(num_steps, dtype=np.float64)
     i = 0
 
@@ -488,10 +490,13 @@ for i in range(num_steps):
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
     print(i+1, eL2_local, sL2_local, qL2_local)
     e_w[i] = qL2_local/eL2_local
+    #s_w[i] = sL2_local
     i += 1
 
 np.savetxt('t_e.csv', t_e, delimiter=',')
 np.savetxt('e_w01.csv', e_w, delimiter=',')
+#np.savetxt('s_w1.csv', s_w, delimiter=',')
+
 
 """    
 fig = plt.figure(figsize=(15, 10))
