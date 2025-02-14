@@ -8,7 +8,7 @@ from dolfinx import fem, mesh, io, plot, geometry
 from dolfinx.io import gmshio
 from dolfinx.fem import functionspace, form, Function, assemble_scalar
 from ufl import (FacetNormal, Identity, Measure, TestFunction, TrialFunction,
-	             div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
+                 div, dot, ds, dx, inner, lhs, grad, nabla_grad, rhs, sym, system)
 import pyvista
 
 #import point_source as ps
@@ -30,12 +30,14 @@ model_rank = 0
 
 
 #Physical Constants
-D = 0.1
-a = 0
-b = 1
-c = 0
+D = 1
+a1 = 1
+a2 = 7
+b1 = 7
+b2 = 1
+c = 1
 t = 0  
-T = 20.0
+T = 40.0
 num_steps = 500
 dt = T / num_steps
 
@@ -43,27 +45,27 @@ gmsh.initialize()
 
 #Define the Petri dish and the cells
 if mesh_comm.rank == model_rank:
-	dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)	
-	cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	#cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
-	#cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
+    dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)    
+    cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
+    cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+    #cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
-	gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
-	#gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
-	gmsh.model.occ.synchronize()
+    gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
+    gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+    #gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
+    gmsh.model.occ.synchronize()
 
 #Spatial exclusion mesh with more refined meshing around the cells
 liquid_marker_s = 1
 if mesh_comm.rank == model_rank:
-	volume_s = gmsh.model.getEntities(dim=gdim)
-	print(len(volume_s))
-	assert(len(volume_s) == 1)
-	gmsh.model.addPhysicalGroup(volume_s[0][0],[volume_s[0][1]],liquid_marker_s)
-	gmsh.model.setPhysicalName(volume_s[0][0],liquid_marker_s,"Liquid_s")
+    volume_s = gmsh.model.getEntities(dim=gdim)
+    print(len(volume_s))
+    assert(len(volume_s) == 1)
+    gmsh.model.addPhysicalGroup(volume_s[0][0],[volume_s[0][1]],liquid_marker_s)
+    gmsh.model.setPhysicalName(volume_s[0][0],liquid_marker_s,"Liquid_s")
 
 
 wall_marker, cells_marker = 2, 3
@@ -71,38 +73,38 @@ wall_marker, cells_marker = 2, 3
 wall, cells = [], []
 
 if mesh_comm.rank == model_rank:
-	boundaries = gmsh.model.getBoundary(volume_s, oriented = False)
-	for boundary in boundaries:
-		center_of_mass = gmsh.model.occ.getCenterOfMass(boundary[0],boundary[1])
-		if np.allclose(center_of_mass,[L/2,0,0]) or np.allclose(center_of_mass,[0,W/2,0]) or \
-		np.allclose(center_of_mass,[L,W/2,0]) or np.allclose(center_of_mass,[L/2,W,0]):
-			wall.append(boundary[1])
-		else:
-			cells.append(boundary[1])
-	gmsh.model.addPhysicalGroup(1,wall,wall_marker)
-	gmsh.model.setPhysicalName(1,wall_marker,"Wall")
-	gmsh.model.addPhysicalGroup(1,cells,cells_marker)
-	gmsh.model.setPhysicalName(1,cells_marker,"Cell")
+    boundaries = gmsh.model.getBoundary(volume_s, oriented = False)
+    for boundary in boundaries:
+        center_of_mass = gmsh.model.occ.getCenterOfMass(boundary[0],boundary[1])
+        if np.allclose(center_of_mass,[L/2,0,0]) or np.allclose(center_of_mass,[0,W/2,0]) or \
+        np.allclose(center_of_mass,[L,W/2,0]) or np.allclose(center_of_mass,[L/2,W,0]):
+            wall.append(boundary[1])
+        else:
+            cells.append(boundary[1])
+    gmsh.model.addPhysicalGroup(1,wall,wall_marker)
+    gmsh.model.setPhysicalName(1,wall_marker,"Wall")
+    gmsh.model.addPhysicalGroup(1,cells,cells_marker)
+    gmsh.model.setPhysicalName(1,cells_marker,"Cell")
 
 res_min = r1 / 7
 
 if mesh_comm.rank == model_rank:
-	distance_field = gmsh.model.mesh.field.add("Distance")
-	gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cells)
-	threshold_field = gmsh.model.mesh.field.add("Threshold")
-	gmsh.model.mesh.field.setNumber(threshold_field, "IField", distance_field)
-	gmsh.model.mesh.field.setNumber(threshold_field, "LcMin", res_min)
-	gmsh.model.mesh.field.setNumber(threshold_field, "LcMax", 0.25 * L)
-	gmsh.model.mesh.field.setNumber(threshold_field, "DistMin", r1)
-	gmsh.model.mesh.field.setNumber(threshold_field, "DistMax", 2 * L)
-	min_field = gmsh.model.mesh.field.add("Min")
-	gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", [threshold_field])
-	gmsh.model.mesh.field.setAsBackgroundMesh(min_field)
+    distance_field = gmsh.model.mesh.field.add("Distance")
+    gmsh.model.mesh.field.setNumbers(distance_field, "EdgesList", cells)
+    threshold_field = gmsh.model.mesh.field.add("Threshold")
+    gmsh.model.mesh.field.setNumber(threshold_field, "IField", distance_field)
+    gmsh.model.mesh.field.setNumber(threshold_field, "LcMin", res_min)
+    gmsh.model.mesh.field.setNumber(threshold_field, "LcMax", 0.25 * L)
+    gmsh.model.mesh.field.setNumber(threshold_field, "DistMin", r1)
+    gmsh.model.mesh.field.setNumber(threshold_field, "DistMax", 2 * L)
+    min_field = gmsh.model.mesh.field.add("Min")
+    gmsh.model.mesh.field.setNumbers(min_field, "FieldsList", [threshold_field])
+    gmsh.model.mesh.field.setAsBackgroundMesh(min_field)
 
 if mesh_comm.rank == model_rank:
-	gmsh.model.mesh.generate(gdim)
-	gmsh.model.mesh.setOrder(1)
-	gmsh.model.mesh.optimize("Netgen")
+    gmsh.model.mesh.generate(gdim)
+    gmsh.model.mesh.setOrder(1)
+    gmsh.model.mesh.optimize("Netgen")
 
 domain_spatial_exclusion, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V_s = functionspace(domain_spatial_exclusion, ("Lagrange", 1))
@@ -125,32 +127,32 @@ plotter.view_xy()
     #figure = plotter.screenshot("patial_exclusion_mesh_1.png")
 
 if mesh_comm.rank == model_rank:
-	gmsh.model.mesh.generate(gdim)
-	gmsh.model.mesh.setOrder(1)
-	gmsh.model.mesh.optimize("Netgen")
+    gmsh.model.mesh.generate(gdim)
+    gmsh.model.mesh.setOrder(1)
+    gmsh.model.mesh.optimize("Netgen")
 
 #Add the hole back
 if  mesh_comm.rank == model_rank:
-	cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-	#cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
-	#cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
-	gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
-	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
-	#gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
-	gmsh.model.occ.synchronize()
+    cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
+    cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+    #cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
+    gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
+    gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
+    #gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
+    gmsh.model.occ.synchronize()
 
 liquid_marker_p = 4
 if mesh_comm.rank == model_rank:
-	volume_p = gmsh.model.getEntities(dim=gdim)
-	print(len(volume_p))
-	assert(len(volume_p) == 1)
-	gmsh.model.addPhysicalGroup(volume_p[0][0],[volume_p[0][1]],liquid_marker_p)
-	gmsh.model.setPhysicalName(volume_p[0][0],liquid_marker_p,"Liquid_p")
+    volume_p = gmsh.model.getEntities(dim=gdim)
+    print(len(volume_p))
+    assert(len(volume_p) == 1)
+    gmsh.model.addPhysicalGroup(volume_p[0][0],[volume_p[0][1]],liquid_marker_p)
+    gmsh.model.setPhysicalName(volume_p[0][0],liquid_marker_p,"Liquid_p")
 
 if mesh_comm.rank == model_rank:
-	gmsh.model.mesh.generate(gdim)
-	gmsh.model.mesh.setOrder(1)
-	gmsh.model.mesh.optimize("Netgen")
+    gmsh.model.mesh.generate(gdim)
+    gmsh.model.mesh.setOrder(1)
+    gmsh.model.mesh.optimize("Netgen")
 
 domain_point_source, cell_markers, facet_markers = gmshio.model_to_mesh(gmsh.model, mesh_comm, model_rank, gdim = gdim)
 V_p = functionspace(domain_point_source, ("Lagrange", 1))
@@ -206,8 +208,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a * u_s * v_s * ds_s(1) #+ dt * a * u_s * v_s * ds_s(2)
-L_s = u_sn * v_s * dx_s + dt * b * v_s * ds_s(1) #+ dt * b * v_s * ds_s(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a1 * u_s * v_s * ds_s(1) + dt * a2 * u_s * v_s * ds_s(2)
+L_s = u_sn * v_s * dx_s + dt * b1 * v_s * ds_s(1) + dt * b2 * v_s * ds_s(2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -248,7 +250,7 @@ renderer = plotter.add_mesh(grid, show_edges=True, lighting=False,
 for i in range(num_steps):
     t += dt
     with b_s.localForm() as loc_b:
-    	loc_b.set(0)
+        loc_b.set(0)
     assemble_vector(b_s, linearform_s)
     # Solve linear problem
     solver.solve(b_s, u_s.vector)
@@ -318,10 +320,10 @@ def yy2(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0091 #+ 0.0088
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0081 #+ 0.0088
 
 def cell2_subdomain(x):
-    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 #+ 0.0097
+    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.0093
 
 
 subdomain_locator = [(1, cell1_subdomain),
@@ -362,7 +364,7 @@ fyy2.interpolate(yy2)
 
 
 a_p = u_p * v_p * dx_p + dt * D * dot(grad(u_p), grad(v_p)) * dx_p
-L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b * dt * delta1 * v_p * dx_p #+ 2 * np.pi * r2 * b * dt * delta2 * v_p * dx_p
+L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b1 * dt * delta1 * v_p * dx_p + 2 * np.pi * r2 * b2 * dt * delta2 * v_p * dx_p
 linearform_p = form (L_p)
 
 A_p = assemble_matrix(form(a_p))
@@ -371,11 +373,10 @@ b_p = create_vector(form(L_p))
 
 area1 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
 area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
-
 print(area1, area2, np.pi*r1*r1)
 
-"""
-t1_p = 2 * dt * a / r1 * u_p * dx_p(1) + dt * a / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt * a / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1) 
+
+t1_p = a1 * (2 * dt  / r1 * u_p * dx_p(1) + dt / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1))
 q1_p = delta1 * v_p * dx_p
 tt1_p = create_vector(form(t1_p))
 qq1_p = create_vector(form(q1_p))
@@ -397,10 +398,9 @@ Q1_p.setValues(range(qq1_p.getSize()),0,qq1_p)
 Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
-"""
 
-"""
-t2_p = 2 * dt * a / r2 * u_p * dx_p(2) + dt * a / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt * a / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2) 
+
+t2_p = a2 * (2 * dt / r2 * u_p * dx_p(2) + dt / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2))
 q2_p = delta2 * v_p * dx_p
 tt2_p = create_vector(form(t2_p))
 qq2_p = create_vector(form(q2_p))
@@ -421,7 +421,7 @@ Q2_p.setValues(range(qq2_p.getSize()),0,qq2_p)
 Q2_p.assemble()
 A2_p = Q2_p.matTransposeMult(T2_p)
 A_p.axpy(1, A2_p)
-"""
+
 
 solver_p = PETSc.KSP().create(domain_point_source.comm)
 solver_p.setOperators(A_p)
@@ -432,36 +432,35 @@ u_s = Function(V_s)
 u_p = Function(V_p)
 u_p_res = Function(V_s)
 w = Function(V_s)
-"""
+
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
-plotter.open_gif("Comparison.gif", fps=10)
-grid.point_data["u_s"] = u_s.x.array
-warped = grid.warp_by_scalar("u_s", factor=1)
-viridis = mpl.colormaps.get_cmap("viridis").resampled(25)
+plotter.open_gif("Mathmod.gif", fps=10)
+plotter.camera.position = (5,6.3,25)
+plotter.camera.focal_point = (5.0001,6.3,0)
+plotter.camera.roll -= 90
+grid.point_data["w"] = w.x.array
+warped = grid.warp_by_scalar("w", factor=0)
+viridis = mpl.colormaps.get_cmap("viridis").resampled(55)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
-renderer = plotter.add_mesh(warped, show_edges=True, lighting=False,
+renderer = plotter.add_mesh(warped, show_edges=False, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
                             clim=[0, 0.1])
-#xdmf = io.XDMFFile(domain_point_source.comm, "point_source.xdmf", "w")
-#xdmf.write_mesh(domain_point_source)
-"""
+xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "Mathmod.xdmf", "w")
+xdmf.write_mesh(domain_spatial_exclusion)
 
-if domain_spatial_exclusion.comm.rank == 0:
-    e_w = np.zeros(num_steps, dtype=np.float64)
+#if domain_spatial_exclusion.comm.rank == 0:
+#    e_w = np.zeros(num_steps, dtype=np.float64)
     #s_w = np.zeros(num_steps, dtype=np.float64)
-    t_e = np.zeros(num_steps, dtype=np.float64)
-    i = 0
-
-print(a, b, c, D)
-
+#    t_e = np.zeros(num_steps, dtype=np.float64)
+#    i = 0
 
 for i in range(num_steps):
     t += dt
-    t_e[i] = t
+    #t_e[i] = t
     with b_s.localForm() as loc_b:
-    	loc_b.set(0)
+        loc_b.set(0)
     assemble_vector(b_s, linearform_s)
     # Solve linear problem
     solver_s.solve(b_s, u_s.vector)
@@ -474,27 +473,27 @@ for i in range(num_steps):
     solver_p.solve(b_p, u_p.vector)
     u_p.x.scatter_forward()
     u_pn.x.array[:] = u_p.x.array
-    #xdmf.write_function(u_p, t)
+    xdmf.write_function(u_s, t)
     u_p_res.interpolate(u_p, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
         u_p_res.function_space.mesh._cpp_object,
         u_p_res.function_space.element,
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
     w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    #new_warped = grid.warp_by_scalar("u_s", factor=1)
-    #warped.points[:, :] = new_warped.points
-    #warped.point_data["u_s"][:] = u_s.x.array
-    #plotter.write_frame()
+    new_warped = grid.warp_by_scalar("w", factor=0)
+    warped.points[:, :] = new_warped.points
+    warped.point_data["w"][:] = w.x.array
+    plotter.write_frame()
     eL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_s * u_s * dx_s)), op=MPI.SUM))
     sL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(u_p_res * u_p_res * dx_s)), op=MPI.SUM))
     qL2_local = np.sqrt(domain_spatial_exclusion.comm.allreduce(assemble_scalar(fem.form(w * w * dx_s)), op=MPI.SUM))
     print(i+1, eL2_local, sL2_local, qL2_local)
-    e_w[i] = qL2_local/eL2_local
+    #e_w[i] = qL2_local/eL2_local
     #s_w[i] = sL2_local
     i += 1
 
-np.savetxt('t_e.csv', t_e, delimiter=',')
-np.savetxt('e_w01.csv', e_w, delimiter=',')
+#np.savetxt('t_e.csv', t_e, delimiter=',')
+#np.savetxt('e_w01.csv', e_w, delimiter=',')
 #np.savetxt('s_w1.csv', s_w, delimiter=',')
 
 
@@ -511,5 +510,5 @@ plt.savefig("Comparison_" + str(a) + "_" + str(b) + "_" + str(c) + "_"+ str(D) +
 """
 
 #os.remove("spactial_exclusion_try.gif")
-#plotter.close()
-#xdmf.close()
+plotter.close()
+xdmf.close()
