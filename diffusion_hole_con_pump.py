@@ -17,7 +17,7 @@ import pyvista
 #Create the computation domain and geometric constant
 
 L = W = 10
-r1 = 0.25
+r1 = 1
 c1_x = 5
 c1_y = 5
 r2 = 0.25
@@ -30,15 +30,15 @@ model_rank = 0
 
 
 #Physical Constants
-D = 1
-a1 = 1
+D = 0.1
+a1 = 5
 a2 = 7
-b1 = 7
+b1 = 1
 b2 = 1
-c = 1
+c = 0.1
 t = 0  
-T = 40.0
-num_steps = 500
+T = 16.0
+num_steps = 210
 dt = T / num_steps
 
 gmsh.initialize()
@@ -47,14 +47,14 @@ gmsh.initialize()
 if mesh_comm.rank == model_rank:
     dish = gmsh.model.occ.addRectangle(0, 0, 0, L, W, tag=1)    
     cell1 = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-    cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+    #cell2 = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
     #cell3 = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
 
 
 #Cut out for spatial exclusion model
 if  mesh_comm.rank == model_rank:
     gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell1)])
-    gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
+    #gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell2)])
     #gmsh.model.occ.cut([(gdim,dish)],[(gdim,cell3)])
     gmsh.model.occ.synchronize()
 
@@ -134,10 +134,10 @@ if mesh_comm.rank == model_rank:
 #Add the hole back
 if  mesh_comm.rank == model_rank:
     cell1b = gmsh.model.occ.addDisk(c1_x, c1_y, 0, r1, r1)
-    cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
+    #cell2b = gmsh.model.occ.addDisk(c2_x, c2_y, 0, r2, r2)
     #cell3b = gmsh.model.occ.addDisk(c3_x, c3_y, 0, r3, r3)
     gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell1b)])
-    gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
+    #gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell2b)])
     #gmsh.model.occ.fuse([(gdim,dish)],[(gdim,cell3b)])
     gmsh.model.occ.synchronize()
 
@@ -208,8 +208,8 @@ v_s = TestFunction(V_s)
 u_sn = Function(V_s)
 u_sn.interpolate(initial_condition)
 
-a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a1 * u_s * v_s * ds_s(1) + dt * a2 * u_s * v_s * ds_s(2)
-L_s = u_sn * v_s * dx_s + dt * b1 * v_s * ds_s(1) + dt * b2 * v_s * ds_s(2)
+a_s = u_s * v_s * dx_s + dt * D * dot(grad(u_s), grad(v_s)) * dx_s + dt * a1 * u_s * v_s * ds_s(1) #+ dt * a2 * u_s * v_s * ds_s(2)
+L_s = u_sn * v_s * dx_s + dt * b1 * v_s * ds_s(1) #+ dt * b2 * v_s * ds_s(2)
 
 
 from dolfinx.fem.petsc import assemble_vector, assemble_matrix, create_vector, apply_lifting, set_bc
@@ -320,14 +320,14 @@ def yy2(x):
     #return np.full(x.shape[1],True,dtype=bool) 
 
 def cell1_subdomain(x):
-    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.0081 #+ 0.0088
+    return (x[0]-c1_x)**2 + (x[1]-c1_y)**2 <= (r1)**2 + 0.145 #+ 0.0088
 
-def cell2_subdomain(x):
-    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.0093
+#def cell2_subdomain(x):
+#    return (x[0]-c2_x)**2 + (x[1]-c2_y)**2 <= (r2)**2 + 0.0093
 
 
-subdomain_locator = [(1, cell1_subdomain),
-              (2, cell2_subdomain)]
+subdomain_locator = [(1, cell1_subdomain)]
+#              (2, cell2_subdomain)]
 
 facet_indices2, facet_markers2 = [], []
 for (marker, locator) in subdomain_locator:
@@ -364,7 +364,7 @@ fyy2.interpolate(yy2)
 
 
 a_p = u_p * v_p * dx_p + dt * D * dot(grad(u_p), grad(v_p)) * dx_p
-L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b1 * dt * delta1 * v_p * dx_p + 2 * np.pi * r2 * b2 * dt * delta2 * v_p * dx_p
+L_p = u_pn * v_p * dx_p + 2 * np.pi * r1 * b1 * dt * delta1 * v_p * dx_p #+ 2 * np.pi * r2 * b2 * dt * delta2 * v_p * dx_p
 linearform_p = form (L_p)
 
 A_p = assemble_matrix(form(a_p))
@@ -372,8 +372,8 @@ A_p.assemble()
 b_p = create_vector(form(L_p))
 
 area1 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(1))), op=MPI.SUM)
-area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
-print(area1, area2, np.pi*r1*r1)
+#area2 = domain_point_source.comm.allreduce(assemble_scalar(fem.form(1 * dx_p(2))), op=MPI.SUM)
+print(area1, np.pi*r1*r1)
 
 
 t1_p = a1 * (2 * dt  / r1 * u_p * dx_p(1) + dt / r1 * dot(grad(fxx1),grad(u_p)) * dx_p(1) + dt / r1 * dot(grad(fyy1),grad(u_p)) * dx_p(1))
@@ -399,7 +399,7 @@ Q1_p.assemble()
 A1_p = Q1_p.matTransposeMult(T1_p)
 A_p.axpy(1, A1_p)
 
-
+'''
 t2_p = a2 * (2 * dt / r2 * u_p * dx_p(2) + dt / r2 * dot(grad(fxx2),grad(u_p)) * dx_p(2) + dt / r2 * dot(grad(fyy2),grad(u_p)) * dx_p(2))
 q2_p = delta2 * v_p * dx_p
 tt2_p = create_vector(form(t2_p))
@@ -421,7 +421,7 @@ Q2_p.setValues(range(qq2_p.getSize()),0,qq2_p)
 Q2_p.assemble()
 A2_p = Q2_p.matTransposeMult(T2_p)
 A_p.axpy(1, A2_p)
-
+'''
 
 solver_p = PETSc.KSP().create(domain_point_source.comm)
 solver_p.setOperators(A_p)
@@ -435,24 +435,24 @@ w = Function(V_s)
 
 grid = pyvista.UnstructuredGrid(*plot.vtk_mesh(V_s))
 plotter = pyvista.Plotter()
-plotter.open_gif("Mathmod.gif", fps=10)
-plotter.camera.position = (5,6.3,25)
-plotter.camera.focal_point = (5.0001,6.3,0)
-plotter.camera.roll -= 90
+plotter.open_gif("RAGA.gif", fps=10)
+#plotter.camera.position = (5,6.3,25)
+#plotter.camera.focal_point = (5.0001,6.3,0)
+#plotter.camera.roll -= 90
 grid.point_data["w"] = w.x.array
-warped = grid.warp_by_scalar("w", factor=0)
-viridis = mpl.colormaps.get_cmap("viridis").resampled(55)
+warped = grid.warp_by_scalar("w", factor=1)
+viridis = mpl.colormaps.get_cmap("magma").resampled(55)
 sargs = dict(title_font_size=25, label_font_size=20, fmt="%.2e", color="black",
              position_x=0.1, position_y=0.8, width=0.8, height=0.1)
 renderer = plotter.add_mesh(warped, show_edges=False, lighting=False,
                             cmap=viridis, scalar_bar_args=sargs,
-                            clim=[0, 0.1])
-xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "Mathmod.xdmf", "w")
+                            clim=[-1, 1])
+xdmf = io.XDMFFile(domain_spatial_exclusion.comm, "RAGA.xdmf", "w")
 xdmf.write_mesh(domain_spatial_exclusion)
 
 #if domain_spatial_exclusion.comm.rank == 0:
 #    e_w = np.zeros(num_steps, dtype=np.float64)
-    #s_w = np.zeros(num_steps, dtype=np.float64)
+#    s_w = np.zeros(num_steps, dtype=np.float64)
 #    t_e = np.zeros(num_steps, dtype=np.float64)
 #    i = 0
 
@@ -473,14 +473,14 @@ for i in range(num_steps):
     solver_p.solve(b_p, u_p.vector)
     u_p.x.scatter_forward()
     u_pn.x.array[:] = u_p.x.array
-    xdmf.write_function(u_s, t)
+    xdmf.write_function(w, t)
     u_p_res.interpolate(u_p, nmm_interpolation_data=fem.create_nonmatching_meshes_interpolation_data(
         u_p_res.function_space.mesh._cpp_object,
         u_p_res.function_space.element,
         u_p.function_space.mesh._cpp_object,padding=0))
     u_p_res.x.scatter_forward()
-    w.x.array[:] = np.abs(u_s.x.array[:] - u_p_res.x.array[:])
-    new_warped = grid.warp_by_scalar("w", factor=0)
+    w.x.array[:] =  u_p_res.x.array[:]
+    new_warped = grid.warp_by_scalar("w", factor=1)
     warped.points[:, :] = new_warped.points
     warped.point_data["w"][:] = w.x.array
     plotter.write_frame()
